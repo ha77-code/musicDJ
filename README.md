@@ -233,6 +233,7 @@ A: MP3 / FLAC / WAV / M4A / OGG / AAC / WMA / Opus / NCM。
 
 ## 鸣谢
 
+- 灵感来源：[Claudio](https://github.com/hllqkb/Claudio) — AI 电台 DJ
 - 网易云音乐 API 基于 [NeteaseCloudMusicApiEnhanced/api-enhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced)（MIT 协议）
 
 ## License
