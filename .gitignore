@@ -1,0 +1,22 @@
+# 配置文件（含 API 密钥/Token/Cookie）
+config.json
+
+# 运行时数据
+data/state.db
+data/playlist.json
+data/listening_history/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+node_modules/
+
+# 本地音乐文件
+music/
+
+# 系统文件
+.DS_Store
+Thumbs.db

@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Music DJ - UI Demo</title>
+<style>
+  /* ===== 基础重置 ===== */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* ===== 背景层 ===== */
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #050505;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    /* 整体背景比手机更深，形成对比 */
+  }
+
+  /* ===== 手机外壳 ===== */
+  .phone-shell {
+    width: 420px;
+    height: 90vh;
+    max-height: 780px;
+    min-height: 680px;
+    background: #0A0A0A;
+    border-radius: 44px;
+    box-shadow:
+      0 0 0 2px rgba(255,255,255,0.04),
+      0 0 0 6px rgba(0,0,0,0.8),
+      0 30px 80px rgba(0,0,0,0.6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    /* 页面加载淡入上升动画 */
+    animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(40px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* ===== 顶部区域 ===== */
+  .top-section {
+    padding: 32px 24px 0;
+    flex-shrink: 0;
+  }
+
+  .top-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .top-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  /* 圆形渐变头像 */
+  .avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #7C3AED, #A855F7, #6366F1);
+    flex-shrink: 0;
+  }
+
+  .dj-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .dj-name {
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  /* 绿色跳动小圆点 + Speaking... */
+  .speaking-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .green-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22C55E;
+    /* 脉冲闪烁动画 */
+    animation: pulseDot 1.2s ease-in-out infinite;
+  }
+
+  @keyframes pulseDot {
+    0%, 100% { opacity: 1; box-shadow: 0 0 4px #22C55E; }
+    50% { opacity: 0.3; box-shadow: 0 0 1px #22C55E; }
+  }
+
+  .speaking-text {
+    color: #22C55E;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+  }
+
+  /* 右上角播放时间 */
+  .current-time {
+    color: rgba(255,255,255,0.6);
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+  }
+
+  /* ===== 音频波形区域 ===== */
+  .waveform {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    height: 48px;
+    gap: 2px;
+    margin-top: 24px;
+  }
+
+  .waveform .bar {
+    flex: 1;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.5);
+    /* 每根柱子的高度和动画延迟由 JS 设置 */
+  }
+
+  @keyframes waveJump {
+    0%, 100% { transform: scaleY(0.3); }
+    30% { transform: scaleY(1); }
+    60% { transform: scaleY(0.5); }
+  }
+
+  /* 底部小波形 */
+  .mini-waveform {
+    display: flex;
+    align-items: center;
+    gap: 1.5px;
+    height: 12px;
+  }
+
+  .mini-waveform .mini-bar {
+    width: 2px;
+    border-radius: 1px;
+    background: rgba(255,255,255,0.4);
+    animation: miniWave 0.8s ease-in-out infinite;
+  }
+
+  @keyframes miniWave {
+    0%, 100% { height: 3px; }
+    50% { height: 10px; }
+  }
+
+  /* ===== 中部白色浮层卡片 ===== */
+  .card-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    padding: 20px 20px 0;
+    min-height: 0; /* 防止 flex 溢出 */
+  }
+
+  .white-card {
+    width: 100%;
+    background: #FFFFFF;
+    border-radius: 24px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+    padding: 20px 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    /* 卡片本身也做一个轻微延迟的淡入 */
+    animation: fadeInUp 0.8s 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* 专辑封面 */
+  .album-cover {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 70%, #1a1a2e 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* 封面装饰 */
+  .album-cover::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 20% 30%, rgba(100,130,180,0.3) 0%, transparent 50%),
+      radial-gradient(ellipse at 70% 60%, rgba(60,80,140,0.25) 0%, transparent 50%);
+  }
+
+  .album-cover-label {
+    position: relative;
+    color: rgba(255,255,255,0.3);
+    font-size: 20px;
+    letter-spacing: 0.2em;
+    font-weight: 300;
+    text-transform: uppercase;
+  }
+
+  /* 专辑信息 */
+  .album-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .album-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111;
+    letter-spacing: 0.01em;
+    line-height: 1.3;
+  }
+
+  .album-artist {
+    font-size: 13px;
+    color: #999;
+    letter-spacing: 0.02em;
+  }
+
+  /* ===== 自定义进度条 ===== */
+  .progress-area {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .progress-bar-bg {
+    width: 100%;
+    height: 3px;
+    border-radius: 2px;
+    background: #E8E8E8;
+    position: relative;
+    cursor: pointer;
+  }
+
+  .progress-bar-fill {
+    width: 0%;
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, #7C3AED, #A855F7);
+    position: relative;
+    transition: width 0.3s ease;
+  }
+
+  .progress-bar-fill::after {
+    content: '';
+    position: absolute;
+    right: -4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: #A855F7;
+    box-shadow: 0 2px 6px rgba(168,85,247,0.4);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .progress-bar-bg:hover .progress-bar-fill::after {
+    opacity: 1;
+  }
+
+  .progress-times {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #999;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.03em;
+  }
+
+  /* ===== 播放控制按钮 ===== */
+  .play-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+  }
+
+  .play-controls button {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    font-size: 18px;
+    cursor: pointer;
+    color: #333;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .play-controls button:hover {
+    background: #F0F0F0;
+    transform: scale(1.06);
+  }
+
+  .play-controls .btn-pause {
+    width: 52px;
+    height: 52px;
+    background: #111;
+    color: #fff;
+    font-size: 18px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  }
+
+  .play-controls .btn-pause:hover {
+    background: #333;
+    transform: scale(1.08);
+  }
+
+  /* ===== 底部字幕区域 ===== */
+  .subtitles-section {
+    flex-shrink: 0;
+    padding: 16px 20px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .subtitle-item {
+    display: flex;
+    gap: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+    transition: opacity 0.4s;
+  }
+
+  .subtitle-item .ts-label {
+    color: rgba(255,255,255,0.5);
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-weight: 500;
+  }
+
+  .subtitle-item .ts-text {
+    color: rgba(255,255,255,0.4); /* 旧字幕半透明 */
+  }
+
+  /* 最新一条高亮 */
+  .subtitle-item:last-child .ts-label {
+    color: rgba(255,255,255,0.7);
+  }
+
+  .subtitle-item:last-child .ts-text {
+    color: rgba(255,255,255,0.95); /* 最新字幕白色 */
+  }
+
+  /* 绿色高亮词 */
+  .highlight-green {
+    color: #22C55E;
+    font-weight: 500;
+  }
+
+  /* ===== 底部固定栏 ===== */
+  .bottom-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px 20px;
+    gap: 12px;
+  }
+
+  .bottom-time {
+    color: rgba(255,255,255,0.5);
+    font-size: 12px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .bottom-pause-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: transparent;
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+
+  .bottom-pause-btn:hover {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.3);
+  }
+
+  /* ===== 响应式微调 ===== */
+  @media (max-width: 440px) {
+    .phone-shell {
+      width: 100%;
+      border-radius: 0;
+      height: 100vh;
+      max-height: 100vh;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- 手机外壳 -->
+<div class="phone-shell">
+
+  <!-- 顶部区域 -->
+  <div class="top-section">
+    <div class="top-header">
+      <!-- 左侧：头像 + 名字 + 状态 -->
+      <div class="top-header-left">
+        <div class="avatar"></div>
+        <div class="dj-info">
+          <span class="dj-name">DJ Nova</span>
+          <div class="speaking-indicator">
+            <span class="green-dot"></span>
+            <span class="speaking-text">Speaking...</span>
+          </div>
+        </div>
+      </div>
+      <!-- 右侧：当前播放时间 -->
+      <span class="current-time" id="topTimer">0:12</span>
+    </div>
+
+    <!-- 白色柱状音频波形（50根柱子） -->
+    <div class="waveform" id="waveform"></div>
+  </div>
+
+  <!-- 中部白色浮层卡片 -->
+  <div class="card-wrapper">
+    <div class="white-card">
+      <!-- 专辑封面 -->
+      <div class="album-cover">
+        <span class="album-cover-label">ALBUM ART</span>
+      </div>
+
+      <!-- 专辑信息 -->
+      <div class="album-info">
+        <div class="album-title">A Human Odyssey</div>
+        <div class="album-artist">Sign of the Times — Harry Styles</div>
+      </div>
+
+      <!-- 自定义进度条 -->
+      <div class="progress-area">
+        <div class="progress-bar-bg" id="progressBarBg">
+          <div class="progress-bar-fill" id="progressBarFill"></div>
+        </div>
+        <div class="progress-times">
+          <span id="elapsedTime">0:57</span>
+          <span id="totalTime">5:41</span>
+        </div>
+      </div>
+
+      <!-- 播放控制按钮 -->
+      <div class="play-controls">
+        <button title="上一首">⏮</button>
+        <button class="btn-pause" title="暂停">⏸</button>
+        <button title="下一首">⏭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部字幕区域 -->
+  <div class="subtitles-section">
+    <!-- 历史字幕 - 旧 -->
+    <div class="subtitle-item">
+      <span class="ts-label">DJ • 0:09</span>
+      <span class="ts-text">knowing she wouldn't live long, still <span class="highlight-green">singing</span> softly to her newborn.</span>
+    </div>
+    <!-- 历史字幕 - 旧 -->
+    <div class="subtitle-item">
+      <span class="ts-label">DJ • 0:14</span>
+      <span class="ts-text">Just stop your crying, it's a sign of the times.</span>
+    </div>
+    <!-- 最新字幕 -->
+    <div class="subtitle-item">
+      <span class="ts-label">DJ • 0:17</span>
+      <span class="ts-text">Some say this era of AI feels like a human odyssey.</span>
+    </div>
+  </div>
+
+  <!-- 底部固定栏 -->
+  <div class="bottom-bar">
+    <!-- 小号波形 -->
+    <div class="mini-waveform" id="miniWaveform"></div>
+    <!-- 时间 -->
+    <span class="bottom-time" id="bottomTimer">0:12 ⏸ 3:41</span>
+    <!-- 暂停按钮 -->
+    <button class="bottom-pause-btn">⏸</button>
+  </div>
+
+</div>
+
+<script>
+/* ===== JS 生成动态内容：波形柱子 + 进度条动画 + 计时器 ===== */
+
+(function() {
+  /* ── 生成 50 根主波形柱子 ── */
+  const waveformContainer = document.getElementById('waveform');
+  const barCount = 50;
+
+  for (let i = 0; i < barCount; i++) {
+    const bar = document.createElement('span');
+    bar.classList.add('bar');
+
+    // 每根柱子随机高度基数（在 0.2 ~ 1.0 之间）
+    const baseHeight = 0.2 + Math.random() * 0.8;
+
+    // 动画持续时间随机（在 0.6s ~ 1.8s 之间），让每根柱子节奏不同
+    const duration = 0.6 + Math.random() * 1.2;
+
+    // 延迟错开，形成波动效果
+    const delay = -(Math.random() * duration);
+
+    bar.style.height = (baseHeight * 100) + '%';
+    bar.style.animationName = 'waveJump';
+    bar.style.animationDuration = duration + 's';
+    bar.style.animationDelay = delay + 's';
+    bar.style.animationTimingFunction = 'ease-in-out';
+    bar.style.animationIterationCount = 'infinite';
+
+    waveformContainer.appendChild(bar);
+  }
+
+  /* ── 生成底部小波形 ── */
+  const miniWaveform = document.getElementById('miniWaveform');
+  const miniBarCount = 16;
+
+  for (let i = 0; i < miniBarCount; i++) {
+    const bar = document.createElement('span');
+    bar.classList.add('mini-bar');
+    bar.style.animationDelay = -(i * 0.05) + 's';
+    miniWaveform.appendChild(bar);
+  }
+
+  /* ── 进度条动画 ── */
+  const progressFill = document.getElementById('progressBarFill');
+  const elapsedEl = document.getElementById('elapsedTime');
+  const totalDuration = 5 * 60 + 41; // 5:41 in seconds
+  let currentTime = 57; // 从 0:57 开始
+
+  function updateProgress() {
+    currentTime++;
+    if (currentTime > totalDuration) currentTime = 0;
+
+    const pct = (currentTime / totalDuration) * 100;
+    progressFill.style.width = pct + '%';
+
+    // 格式化时间
+    const mins = Math.floor(currentTime / 60);
+    const secs = currentTime % 60;
+    elapsedEl.textContent = mins + ':' + String(secs).padStart(2, '0');
+  }
+
+  // 先用 duration 确保当前时间显示正确
+  const initialMins = Math.floor(currentTime / 60);
+  const initialSecs = currentTime % 60;
+  elapsedEl.textContent = initialMins + ':' + String(initialSecs).padStart(2, '0');
+  progressFill.style.width = (57 / totalDuration * 100) + '%';
+
+  // 每秒更新进度条
+  setInterval(updateProgress, 1000);
+
+  /* ── 顶部和底部计时器 ── */
+  const topTimer = document.getElementById('topTimer');
+  const bottomTimer = document.getElementById('bottomTimer');
+  let topSeconds = 12;
+
+  function updateTimers() {
+    topSeconds++;
+    if (topSeconds >= 60) topSeconds = 0;
+
+    const m = Math.floor(topSeconds / 60);
+    const s = topSeconds % 60;
+    topTimer.textContent = m + ':' + String(s).padStart(2, '0');
+
+    // 底部时间
+    const remainSecs = totalDuration - currentTime;
+    const rm = Math.floor(Math.max(0, remainSecs) / 60);
+    const rs = Math.max(0, remainSecs) % 60;
+    bottomTimer.textContent = topTimer.textContent + ' ⏸ ' + rm + ':' + String(rs).padStart(2, '0');
+  }
+
+  setInterval(updateTimers, 1000);
+
+  /* ── 进度条点击跳转 ── */
+  const progressBarBg = document.getElementById('progressBarBg');
+  progressBarBg.addEventListener('click', function(e) {
+    const rect = this.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+    currentTime = Math.floor(ratio * totalDuration);
+    const m = Math.floor(currentTime / 60);
+    const s = currentTime % 60;
+    elapsedEl.textContent = m + ':' + String(s).padStart(2, '0');
+    progressFill.style.width = (ratio * 100) + '%';
+  });
+
+  /* ── 暂停按钮切换 ── */
+  const pauseBtn = document.querySelector('.btn-pause');
+  const bottomPauseBtn = document.querySelector('.bottom-pause-btn');
+  let isPlaying = true;
+
+  function togglePlay() {
+    isPlaying = !isPlaying;
+    const icon = isPlaying ? '⏸' : '▶';
+    pauseBtn.textContent = icon;
+    bottomPauseBtn.textContent = icon;
+  }
+
+  pauseBtn.addEventListener('click', togglePlay);
+  bottomPauseBtn.addEventListener('click', togglePlay);
+
+})();
+</script>
+
+</body>
+</html>

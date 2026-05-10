@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>粒子流沙效果</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #050a0f;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    color: #e0f0ff;
+    overflow: hidden;
+  }
+
+  canvas {
+    display: block;
+    cursor: none;
+  }
+
+  /* 控制面板 */
+  #panel {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(5, 20, 35, 0.85);
+    border: 0.5px solid rgba(0, 200, 160, 0.25);
+    border-radius: 16px;
+    padding: 14px 24px;
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    backdrop-filter: blur(12px);
+    z-index: 10;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .ctrl {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .ctrl label {
+    font-size: 12px;
+    color: rgba(0, 220, 180, 0.7);
+    white-space: nowrap;
+  }
+
+  .ctrl input[type=range] {
+    -webkit-appearance: none;
+    width: 90px;
+    height: 3px;
+    background: rgba(0, 200, 160, 0.2);
+    border-radius: 2px;
+    outline: none;
+  }
+
+  .ctrl input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #00dcb4;
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0, 220, 180, 0.6);
+  }
+
+  .ctrl span {
+    font-size: 12px;
+    color: #00dcb4;
+    min-width: 40px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 统计信息 */
+  #stats {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    gap: 10px;
+    z-index: 10;
+  }
+
+  .stat-pill {
+    background: rgba(5, 20, 35, 0.8);
+    border: 0.5px solid rgba(0, 200, 160, 0.2);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 12px;
+    color: rgba(0, 220, 180, 0.6);
+    backdrop-filter: blur(8px);
+  }
+
+  .stat-pill b {
+    color: #00dcb4;
+    font-weight: 600;
+  }
+
+  /* 提示文字 */
+  #hint {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    font-size: 11px;
+    color: rgba(0, 200, 160, 0.35);
+    line-height: 1.8;
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="hint">
+  移动鼠标 — 粒子散开<br>
+  点击鼠标 — 爆炸效果<br>
+  离开范围 — 自动归位
+</div>
+
+<div id="stats">
+  <div class="stat-pill">粒子 <b id="s-count">1000</b></div>
+  <div class="stat-pill">范围 <b id="s-range">100</b>px</div>
+  <div class="stat-pill"><b id="s-fps">60</b> FPS</div>
+</div>
+
+<div id="panel">
+  <div class="ctrl">
+    <label>粒子数量</label>
+    <input type="range" id="r-count" min="200" max="3000" step="100" value="1000">
+    <span id="o-count">1000</span>
+  </div>
+  <div class="ctrl">
+    <label>交互范围</label>
+    <input type="range" id="r-range" min="30" max="250" step="10" value="100">
+    <span id="o-range">100px</span>
+  </div>
+  <div class="ctrl">
+    <label>排斥力度</label>
+    <input type="range" id="r-force" min="1" max="10" step="1" value="5">
+    <span id="o-force">5</span>
+  </div>
+  <div class="ctrl">
+    <label>回弹速度</label>
+    <input type="range" id="r-spring" min="1" max="10" step="1" value="5">
+    <span id="o-spring">5</span>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+let particles = [];
+let mouse = { x: -9999, y: -9999, down: false };
+let params = { count: 1000, range: 100, force: 5, spring: 5 };
+let frameCount = 0, lastFps = 60, lastTime = performance.now();
+
+/* ── 画布尺寸 ── */
+function resize() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W;
+  canvas.height = H;
+  buildParticles();
+}
+
+/* ── 采样文字形状的目标坐标 ── */
+function sampleTextTargets(total) {
+  const offscreen = document.createElement('canvas');
+  offscreen.width = W;
+  offscreen.height = H;
+  const oc = offscreen.getContext('2d');
+
+  /* 文字大小自适应屏幕宽度 */
+  const fontSize = Math.round(Math.min(W / 4.5, H / 2.5));
+  oc.font = `bold ${fontSize}px 'PingFang SC','Microsoft YaHei',sans-serif`;
+  oc.fillStyle = '#fff';
+  oc.textAlign = 'center';
+  oc.textBaseline = 'middle';
+  oc.fillText('粒子交互', W / 2, H / 2);
+
+  const imgData = oc.getImageData(0, 0, W, H).data;
+  const pts = [];
+  const step = Math.max(3, Math.round(Math.sqrt((W * H) / (total * 12))));
+
+  for (let y = 0; y < H; y += step) {
+    for (let x = 0; x < W; x += step) {
+      if (imgData[(y * W + x) * 4 + 3] > 128) {
+        pts.push({ x, y });
+      }
+    }
+  }
+  return pts;
+}
+
+/* ── 创建粒子 ── */
+function buildParticles() {
+  const n = params.count;
+  const targets = sampleTextTargets(n);
+  particles = [];
+
+  for (let i = 0; i < n; i++) {
+    const t = targets.length > 0
+      ? targets[Math.floor(i % targets.length)]
+      : { x: Math.random() * W, y: Math.random() * H };
+
+    const hue = 165 + Math.random() * 50;         /* 青绿色系 */
+    const lit = 50 + Math.random() * 35;
+
+    particles.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      tx: t.x + (Math.random() - 0.5) * 2,
+      ty: t.y + (Math.random() - 0.5) * 2,
+      vx: 0,
+      vy: 0,
+      size: 0.8 + Math.random() * 1.6,
+      hue,
+      lit,
+      alpha: 0.45 + Math.random() * 0.55
+    });
+  }
+}
+
+/* ── 主循环 ── */
+function tick(now) {
+  /* FPS 计算 */
+  frameCount++;
+  if (now - lastTime >= 1000) {
+    lastFps = Math.round(frameCount * 1000 / (now - lastTime));
+    document.getElementById('s-fps').textContent = lastFps;
+    frameCount = 0;
+    lastTime = now;
+  }
+
+  ctx.clearRect(0, 0, W, H);
+
+  const sp = params.spring * 0.003 + 0.018;
+  const damp = 0.82;
+  const forceScale = params.force * 0.85;
+  const rangeR = params.range;
+  const boom = mouse.down ? 3.5 : 1;
+
+  for (const p of particles) {
+    /* 鼠标排斥力 */
+    const dx = mouse.x - p.x;
+    const dy = mouse.y - p.y;
+    const distSq = dx * dx + dy * dy;
+    const rangeRSq = rangeR * rangeR;
+
+    if (distSq < rangeRSq && distSq > 0.0001) {
+      const dist = Math.sqrt(distSq);
+      const strength = (1 - dist / rangeR) * forceScale;
+      p.vx -= (dx / dist) * strength * boom;
+      p.vy -= (dy / dist) * strength * boom;
+    }
+
+    /* 弹簧归位 */
+    p.vx += (p.tx - p.x) * sp;
+    p.vy += (p.ty - p.y) * sp;
+
+    /* 阻尼 */
+    p.vx *= damp;
+    p.vy *= damp;
+
+    /* 更新位置 */
+    p.x += p.vx;
+    p.y += p.vy;
+
+    /* 绘制粒子 */
+    /* 速度影响亮度，运动中的粒子更亮 */
+    const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+    const extraLit = Math.min(speed * 3, 25);
+
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle = `hsl(${p.hue},80%,${p.lit + extraLit}%)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /* 鼠标光标可视化 */
+  if (mouse.x > -100) {
+    /* 外圈 */
+    ctx.globalAlpha = 0.12;
+    ctx.strokeStyle = '#00ffcc';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(mouse.x, mouse.y, rangeR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    /* 内点 */
+    ctx.globalAlpha = mouse.down ? 1 : 0.85;
+    ctx.fillStyle = '#00ffcc';
+    ctx.beginPath();
+    ctx.arc(mouse.x, mouse.y, mouse.down ? 5 : 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.globalAlpha = 1;
+  requestAnimationFrame(tick);
+}
+
+/* ── 鼠标事件 ── */
+canvas.addEventListener('mousemove', e => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+canvas.addEventListener('mouseleave', () => {
+  mouse.x = -9999;
+  mouse.y = -9999;
+});
+canvas.addEventListener('mousedown', () => mouse.down = true);
+canvas.addEventListener('mouseup', () => mouse.down = false);
+
+/* 触摸支持 */
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  mouse.x = e.touches[0].clientX;
+  mouse.y = e.touches[0].clientY;
+}, { passive: false });
+canvas.addEventListener('touchstart', e => {
+  mouse.x = e.touches[0].clientX;
+  mouse.y = e.touches[0].clientY;
+  mouse.down = true;
+});
+canvas.addEventListener('touchend', () => {
+  mouse.x = -9999;
+  mouse.y = -9999;
+  mouse.down = false;
+});
+
+/* ── 滑块绑定 ── */
+function bindSlider(id, key, outId, statId, suffix) {
+  const slider = document.getElementById('r-' + id);
+  const out = document.getElementById('o-' + id);
+  const stat = statId ? document.getElementById('s-' + statId) : null;
+
+  slider.addEventListener('input', () => {
+    const v = +slider.value;
+    params[key] = v;
+    out.textContent = v + (suffix || '');
+    if (stat) stat.textContent = v;
+    if (key === 'count') {
+      document.getElementById('s-count').textContent = v;
+      buildParticles();
+    }
+    if (key === 'range') {
+      document.getElementById('s-range').textContent = v;
+    }
+  });
+}
+
+bindSlider('count', 'count', 'o-count', 'count', '');
+bindSlider('range', 'range', 'o-range', 'range', 'px');
+bindSlider('force', 'force', 'o-force', null, '');
+bindSlider('spring', 'spring', 'o-spring', null, '');
+
+/* ── 初始化 ── */
+window.addEventListener('resize', resize);
+resize();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
