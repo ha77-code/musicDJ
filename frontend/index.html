@@ -4,10 +4,6 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>AI DJ · clauseekio</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-<script src="https://cdn.tailwindcss.com"></script>
 <style>
   /* ═══════════════════════════════════════════════
      AI DJ · Nova — Deep Space × Cyan-Purple
@@ -122,6 +118,11 @@
 <div id="root"></div>
 <audio id="audioPlayer" preload="auto"></audio>
 <canvas id="bgCanvas"></canvas>
+
+<script src="/react.min.js"></script>
+<script src="/react-dom.min.js"></script>
+<script src="/babel.min.js"></script>
+<script src="/tailwind.js"></script>
 
 <script type="text/babel">
 const { useState, useEffect, useRef, useReducer, useCallback, useMemo } = React;
@@ -1086,6 +1087,7 @@ const PlayerCard = ({ state, dispatch, audioActions, viz, isDjTalking, onTransit
         {/* Music Visualizer — real FFT spectrum, animates only when playing */}
         <div className="relative h-40 bg-gradient-to-b from-cyan-500/10 to-purple-500/5 border-b border-white/5">
           <canvas ref={viz.spectrumRef} width="500" height="160" className="absolute inset-0 w-full h-full" />
+        </div>
 
         <div className="flex-1 flex flex-col items-center justify-center px-8 py-4 overflow-hidden">
           {/* Song info */}
@@ -1445,16 +1447,16 @@ function App() {
       try { const m = await api('/api/mode'); mode = (m && m.mode) ? m.mode : 'dj'; } catch (e) {}
       dispatch({ type: 'SET_MODE', payload: mode });
 
-      // Auto-start DJ: greet + first transition
+      // Auto-start DJ: play saved song + greet, no forced transition
       setTimeout(async () => {
         if (mode !== 'dj') return;
-        // If playlist is loaded and has a current song, play it silently then greet
         const pl = await api('/api/playlist').catch(() => ({ songs: [], current_index: -1 }));
         if (pl.songs && pl.songs.length > 0 && pl.current_index >= 0) {
           audioActions.loadSong(pl.current_index);
           setTimeout(() => audioActions.play(), 300);
         }
-        // Greet after a short pause
+        // Greet after song starts — but don't force transition
+        // Let the natural transition trigger (12s before song end) handle it
         setTimeout(async () => {
           try {
             const greet = await api('/api/agent/greet', 'POST', { weather: {} });
@@ -1464,16 +1466,9 @@ function App() {
               const gText = (greet.say || '').replace(/\[em:[^\]]*\]/g, '');
               dispatch({ type: 'SET_SPEECH', payload: { text: gText, segue: null, reason: '', showReactions: false } });
               tts.speak(greet.say, greet.mood || 'chill');
-              // After greeting, trigger first transition to push a song
-              setTimeout(() => {
-                dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: true });
-              }, 3000);
-            } else {
-              // No greet text, just push a song directly
-              dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: true });
             }
           } catch (e) {
-            dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: true });
+            // greet failed silently — not critical
           }
         }, 800);
       }, 800);
