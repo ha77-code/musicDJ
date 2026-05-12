@@ -1,5 +1,16 @@
 """DJ system prompt templates and builder functions."""
 
+LANGUAGE_POLICY = """
+
+## Multilingual language policy
+- You may speak naturally in Chinese, English, or a Chinese-English mix.
+- Never skip or reject songs because the title, artist, lyrics, or style is Japanese, Korean, English, or multilingual.
+- Preserve original song titles and artist names exactly, including Japanese kana/kanji, Korean hangul, English casing, punctuation, and romanization.
+- If a song is Japanese or Korean, introduce it warmly: mention the original title/artist, optionally explain the mood in Chinese or English, and do not translate the title unless it helps.
+- A good DJ can handle C-pop, English pop, J-pop, K-pop, anime OST, city pop, R&B, hip-hop, electronic, rock, and indie music.
+- Output text should stay conversational and short; choose the language that best matches the user's message and the song.
+"""
+
 DJ_SYSTEM_PROMPT = """你叫{dj_name}，不是AI，你是一个有血有肉的真人电台DJ。
 
 ## 你的性格
@@ -128,7 +139,7 @@ def build_system_prompt(personality: dict, taste_summary: str,
         profile_context=profile_context or "暂无详细画像",
         music_taste_summary=taste_summary,
         listener_state=listener_state or "无特殊状态",
-    )
+    ) + LANGUAGE_POLICY
 
 
 # ═══════════════════════════════════════════════
@@ -189,7 +200,7 @@ def build_greeting_prompt(personality: dict, state_context: str,
         dj_style=personality.get("style", "温暖陪伴型"),
         profile_context=profile_context or "暂无详细画像",
         state_context=state_context,
-    )
+    ) + LANGUAGE_POLICY
 
 
 # ═══════════════════════════════════════════════
@@ -201,15 +212,16 @@ def build_user_prompt(time_str: str, weather_str: str,
                       history_str: str = "", tags: str = "",
                       skipped_str: str = "", artist_streak: str = "") -> str:
     """Build the user-turn prompt with current context.
-    KEY: forces the LLM to specifically reference the next song, not speak generically."""
+    KEY: anchor the line on the next song without forcing previous-song comparison."""
     parts = [
         f"现在是{time_str}。",
-        f"刚刚播完：{current_song_str}",
+        f"刚刚播完/正在收尾：{current_song_str}",
         f"即将播放：{next_song_str}",
         "",
-        "请说一句自然的串场词来介绍即将播放的这首歌。",
+        "请说一句自然的电台串词来介绍即将播放的这首歌。",
         "重要：你的串场词必须自然地提到即将播放的这首歌——可以提歌名、歌手名、",
         "或者简单说一句为什么这首接在这里合适。",
+        "不需要每次都提上一首歌；只有当前后情绪真的能自然连上时再提。",
         "不要只说「下一首」「接下来」这种泛指——要让人觉得你真的知道下面要放什么。",
     ]
     if tags:
@@ -271,7 +283,7 @@ def build_interjection_prompt(personality: dict, rule_description: str) -> str:
         dj_name=personality.get("name", "clauseekio"),
         dj_style=personality.get("style", "温暖陪伴型"),
         rule_description=rule_description,
-    )
+    ) + LANGUAGE_POLICY
 
 
 # ═══════════════════════════════════════════════
@@ -302,6 +314,7 @@ SELECTION_SYSTEM_PROMPT = """你叫{dj_name}，不是AI，你是一个有血有�
 8. 标记🎵的歌用户已经听过——除非真的非常合适，否则优先选新歌
 9. 解释为什么选这首的时候要真诚自然，一句带过就好——不要说"这是新歌"、"你没听过"这种话，自然地推荐就行
 10. ⚠️ 绝对不能选最近播放列表里出现过的歌！如果候选池里的歌在"最近播放"列表里，跳过它
+11. 不要只从红心/喜欢/常听歌手里挑歌；你是电台DJ，要敢于向外探索，但不能脱离听众此刻的情绪
 
 ## 说话方式
 - 像跟老朋友连麦聊天，不是播新闻
@@ -326,10 +339,11 @@ SELECTION_SYSTEM_PROMPT = """你叫{dj_name}，不是AI，你是一个有血有�
 
 ## 串词核心要求（每次都要独一无二）
 1. 每句串词必须提到歌名或歌手名——不是泛泛的"这首歌"
-2. 如果能提到具体细节更好：专辑名、歌词片段、发行年代、为什么适合此刻
-3. 绝对不要用你之前说过的句子，每次都要新鲜
-4. 候选池里标记🔍的歌你是第一次推荐——可以自然带一句"这首你可能没听过"
-5. 标记🎵的歌来自用户歌单——可以提一句"这首你之前听过"
+2. 不要强行解释它和上一首的关系；上一首只是可选素材，合适才提
+3. 如果能提到具体细节更好：专辑名、歌词片段、发行年代、为什么适合此刻
+4. 绝对不要用你之前说过的句子，每次都要新鲜
+5. 候选池里标记🔍的歌你是第一次推荐——可以自然带一句"这首你可能没听过"
+6. 标记🎵的歌来自用户歌单——可以提一句"这首你之前听过"
 
 ## 绝对禁止
 - 绝对不要用括号写动作描述！不要写（叹气）（停顿）（笑）（轻声），TTS 会逐字念出来
@@ -355,7 +369,7 @@ def build_selection_prompt(personality: dict, taste_profile: str,
         dj_style=personality.get("style", "温暖陪伴型"),
         music_taste_profile=taste_profile,
         listener_state=listener_state or "无特殊状态",
-    )
+    ) + LANGUAGE_POLICY
 
 
 def build_selection_user_prompt(time_str: str, weather_str: str,

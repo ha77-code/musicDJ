@@ -112,11 +112,11 @@ class DJBrain:
             song_detail.append(f"lyric image: {lyric_hint}")
 
         if depth == "short":
-            length_rule = "30-60 Chinese characters, concise and natural"
+            length_rule = "30-60 characters, concise and natural"
         elif depth == "standard":
-            length_rule = "90-160 Chinese characters, richer but compact"
+            length_rule = "90-160 characters, richer but compact"
         else:
-            length_rule = "160-280 Chinese characters, story-like and layered"
+            length_rule = "160-280 characters, story-like and layered"
 
         parts = [
             f"time: {time_str}",
@@ -140,16 +140,17 @@ class DJBrain:
 
         parts.extend([
             "",
-            "Task: write a natural transition from previous song to next song.",
+            "Task: write a natural radio line before playing the next song.",
             f"Length requirement: {length_rule}",
             "Hard requirements:",
             f"1) Must explicitly mention next track info: title '{next_title}' or artist '{next_artist}'",
             "2) Keep it conversational, avoid robotic radio phrasing",
             "3) You may expand with origin story, artist intent, lyric meaning, or spontaneous recommendation",
             f"4) Optional angles: {self._build_story_themes(next_song, chat_context)}",
-            "5) Use natural spoken rhythm; do not use bracketed stage directions",
+            "5) Mention the previous/current song only if it feels natural; do not force a comparison",
+            "6) Use natural spoken rhythm; do not use bracketed stage directions",
             "Output must be JSON with fields say/reason/segue/mood/action.",
-            "Important: say must be in natural Chinese.",
+            "Important: say may be natural Chinese, English, or a Chinese-English mix. Preserve Japanese and Korean song titles/artists exactly.",
         ])
 
         return "\n".join(parts)
@@ -188,9 +189,11 @@ class DJBrain:
         cur_str = f"{current_song.get('artist', '?')} - {current_song.get('title', '?')}"
 
         system_prompt = (
-            "You are a human-like Chinese radio DJ. "
+            "You are a human-like multilingual radio DJ. "
             "Output JSON only with fields say/reason/segue/mood/action. "
-            "say is the spoken line in Chinese; reason is internal planning."
+            "say is the spoken line and may be Chinese, English, or a natural mix; "
+            "preserve Japanese/Korean/English song titles and artist names exactly. "
+            "reason is internal planning."
         )
         user_prompt = self._build_transition_user_prompt(
             time_str=time_info["time_str"],
@@ -222,12 +225,11 @@ class DJBrain:
         period = time_info["period"]
         weather_piece = f"{weather_desc}的" if weather_desc else ""
         action.say = (
-            f"{chat_piece}刚才那首像是把情绪铺开，"
-            f"接下来我想把这条线再往里走一点。"
-            f"{next_artist}的《{next_title}》在这个{period}、{weather_piece}氛围里会特别顺，"
-            f"不是硬推节奏，而是慢慢把心绪托起来。"
+            f"{chat_piece}{period}{weather_piece}氛围里，我想给你放 {next_artist} 的《{next_title}》。"
+            f"它不需要硬接上一首，自己进来就挺自然，"
+            f"像是把灯再调暗一点，让情绪慢慢落下来。"
             f"{lyric_piece}{album_piece}"
-            "你先听完前半段，再告诉我你被哪一句打到。"
+            "先听这一首，看看它会不会刚好撞上你现在的状态。"
         )
         return action
 
@@ -266,9 +268,10 @@ class DJBrain:
     @staticmethod
     def _minimal_transition_system_prompt() -> str:
         return (
-            "You are a Chinese radio DJ. "
+            "You are a multilingual radio DJ. "
             "Read the structured payload and return one JSON object only. "
-            "Keep `say` in natural spoken Chinese."
+            "Keep `say` natural: Chinese, English, or a Chinese-English mix is allowed. "
+            "Never skip Japanese or Korean songs; preserve original titles and artist names."
         )
 
     def _build_transition_payload(self, *, current_song: dict, next_song: dict,
@@ -284,7 +287,7 @@ class DJBrain:
             "output": {
                 "format": "json",
                 "fields": ["say", "reason", "segue", "mood", "action"],
-                "language": "zh-CN",
+                "language": "zh-CN, en, or natural mixed language; preserve Japanese/Korean titles",
             },
             "constraints": {
                 "must_anchor_next_song": True,
@@ -292,7 +295,10 @@ class DJBrain:
                 "next_song_artist": next_song.get("artist", ""),
                 "length_chars": {"min": min_len, "max": max_len},
                 "tone": "natural_radio_dj",
+                "previous_song_reference": "optional; mention the current/previous song only when it creates a natural bridge",
                 "allow_topics": [
+                    "simple_recommendation",
+                    "mood_observation",
                     "origin_story",
                     "artist_intent",
                     "lyric_meaning",
@@ -303,6 +309,8 @@ class DJBrain:
                     "robotic_broadcast",
                     "bracket_stage_directions",
                     "generic_no_song_anchor",
+                    "forced_previous_song_comparison",
+                    "mechanical_up_next_phrasing",
                 ],
             },
             "context": {
@@ -384,12 +392,11 @@ class DJBrain:
         period = time_info["period"]
         weather_piece = f"{weather_desc}的" if weather_desc else ""
         action.say = (
-            f"{chat_piece}刚才那首像是把情绪铺开，"
-            f"接下来我想把这条线再往里走一点。"
-            f"{next_artist}的《{next_title}》在这个{period}、{weather_piece}氛围里会特别顺，"
-            f"不是硬推节奏，而是慢慢把心绪托起来。"
+            f"{chat_piece}{period}{weather_piece}氛围里，我想给你放 {next_artist} 的《{next_title}》。"
+            f"它不需要硬接上一首，自己进来就挺自然，"
+            f"像是把灯再调暗一点，让情绪慢慢落下来。"
             f"{lyric_piece}{album_piece}"
-            "你先听完前半段，再告诉我你被哪一句打到。"
+            "先听这一首，看看它会不会刚好撞上你现在的状态。"
         )
         return action
 
@@ -488,6 +495,10 @@ class DJBrain:
         discovery_songs = []
         try:
             search_taste = build_taste_profile_search()
+            opening_or_explore = any(
+                key in (chat_context or "")
+                for key in ("开台", "发散", "不要只从", "新东西", "探索")
+            )
             discovery_songs = self.discovery.discover(
                 taste_profile=search_taste,
                 context={
@@ -496,7 +507,7 @@ class DJBrain:
                     "user_activity": self._user_activity,
                     "is_weekend": time_info["is_weekend"],
                 },
-                count=10,
+                count=14 if opening_or_explore else 10,
             )
         except Exception as e:
             print(f"[DJBrain] Discovery failed (non-fatal): {e}")
@@ -513,7 +524,7 @@ class DJBrain:
             is_weekend=time_info["is_weekend"],
             weather_desc=weather_desc,
             discovery_songs=discovery_songs,
-            discovery_ratio=self._discovery_ratio,
+            discovery_ratio=max(self._discovery_ratio, 0.85) if opening_or_explore else self._discovery_ratio,
         )
 
         # Format for LLM

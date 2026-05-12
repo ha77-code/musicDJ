@@ -1103,6 +1103,15 @@ def api_agent_chat():
 用户："放G.E.M.邓紫棋的龙卷风" → 你："龙卷风，你最喜欢的邓紫棋！马上安排。[play:龙卷风—G.E.M.邓紫棋]"
 用户："推荐一首适合现在听的歌" → 你："现在在下雨，半夜了…来首LANY的吧，超级适合。[recommend:ILYSB—LANY]" """
 
+    system_prompt += """
+
+## Multilingual policy
+- You may reply in Chinese, English, or a natural Chinese-English mix.
+- User requests can name songs in English, Japanese, Korean, Chinese, or romanization.
+- Never skip or reject a song because it is Japanese, Korean, English, or multilingual.
+- Preserve original song titles and artist names exactly in action tags.
+"""
+
     def generate():
         full_text = ""
         try:
@@ -1211,6 +1220,15 @@ def api_agent_chat_voice():
 用 [em:词] 标记需要加重语气的地方，TTS 会自然强调。
 限制：一句话最多 1-2 个标记。"""
 
+    system_prompt += """
+
+## Multilingual policy
+- You may reply in Chinese, English, or a natural Chinese-English mix.
+- User requests can name songs in English, Japanese, Korean, Chinese, or romanization.
+- Never skip or reject a song because it is Japanese, Korean, English, or multilingual.
+- Preserve original song titles and artist names exactly in action tags.
+"""
+
     def generate():
         # Step 1: DeepSeek generates full response
         full_text = ""
@@ -1248,6 +1266,7 @@ def api_agent_chat_voice():
             tried_realtime = True
             # Extract a condensed personality for the voice model
             voice_prompt = (
+                "You can speak Chinese, English, or a natural mix; preserve Japanese/Korean/English song names exactly. "
                 f"你是{personality['name']}，一个深夜电台DJ。"
                 f"你的性格：{personality['style']}"
                 f"请用自然的、有情感的语气朗读以下内容。"

@@ -88,7 +88,18 @@ def build_taste_profile_search() -> dict:
     Netease search queries. Uses the same data sources as build_taste_profile()
     but in a machine-readable format.
     """
-    profile = {"top_artists": [], "genres": []}
+    profile = {
+        "top_artists": [],
+        "genres": [],
+        "language_queries": [
+            "J-pop",
+            "K-pop",
+            "Japanese city pop",
+            "Korean R&B",
+            "English pop",
+            "anime OST",
+        ],
+    }
 
     # Top artists from stats
     artists = _load(PROCESSED_DIR / "artist_stats.json")
@@ -107,6 +118,7 @@ def build_taste_profile_search() -> dict:
             "爵士": ["爵士", "Bossa Nova"],
             "独立": ["独立", "另类"],
             "J-POP": ["J-POP", "动漫OST", "City Pop"],
+            "K-POP": ["K-POP", "Korean", "韩流", "韩国", "Korean R&B"],
             "R&B": ["R&B"],
             "电子": ["电子", "Lo-fi", "氛围电子"],
             "民谣": ["民谣"],

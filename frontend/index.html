@@ -75,6 +75,16 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes rhythmGlow { 0%,100%{opacity:0.16;transform:scale(1)} 50%{opacity:0.56;transform:scale(1.04)} }
+  @keyframes sandDrift {
+    0% { transform: translate3d(-3%, -2%, 0) rotate(0deg); opacity: 0.34; }
+    50% { transform: translate3d(2%, 3%, 0) rotate(1deg); opacity: 0.58; }
+    100% { transform: translate3d(4%, -1%, 0) rotate(0deg); opacity: 0.38; }
+  }
+  @keyframes sandFall {
+    0% { transform: translateY(-34%) scaleY(0.76); opacity: 0; }
+    18% { opacity: 0.74; }
+    100% { transform: translateY(44%) scaleY(1.18); opacity: 0; }
+  }
   @keyframes sweep {
     0% { transform: translateX(-120%); }
     100% { transform: translateX(120%); }
@@ -91,12 +101,6 @@
     box-shadow:
       inset 0 1px 0 rgba(204, 255, 228, 0.08),
       0 20px 48px rgba(0, 0, 0, 0.48);
-  }
-
-  .glass-light {
-    background: var(--panel-soft);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(167, 243, 208, 0.22);
   }
 
   .app-shell {
@@ -292,28 +296,6 @@
     opacity: 0.5;
   }
 
-  .chat-msg { display: flex; gap: 10px; margin-bottom: 12px; animation: fadeInUp 0.28s ease; }
-  .chat-msg.user { flex-direction: row-reverse; }
-  .chat-avatar {
-    width: 30px;
-    height: 30px;
-    border-radius: 999px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    flex-shrink: 0;
-  }
-
-  .chat-bubble {
-    padding: 11px 13px;
-    border-radius: 14px;
-    font-size: 13px;
-    line-height: 1.6;
-    max-width: 86%;
-    letter-spacing: 0.01em;
-  }
-
   .act-chip {
     padding: 4px 12px;
     border-radius: 999px;
@@ -356,33 +338,726 @@
   .sr-name { color: #f0fff8; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sr-artist { color: rgba(186, 219, 201, 0.66); font-size: 11px; margin-top: 2px; }
 
-  .rec-card {
+  .dj-broadcast-view {
+    position: fixed;
+    top: 52px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    padding: 14px clamp(10px, 2.4vw, 28px) 18px;
+    overflow: hidden;
+  }
+
+  .broadcast-frame {
+    width: 100%;
+    height: 100%;
+    max-width: 1180px;
+    margin: 0 auto;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+  }
+
+  .broadcast-shell {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 38px;
+    background: #070908;
+    border: 1px solid rgba(240, 255, 246, 0.12);
+    box-shadow:
+      0 34px 90px rgba(0, 0, 0, 0.58),
+      0 0 0 1px rgba(74, 222, 128, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .broadcast-shell::before {
+    content: '';
+    position: absolute;
+    inset: -22% -8% auto;
+    height: 54%;
+    background:
+      radial-gradient(circle at 15% 15%, rgba(74, 222, 128, 0.2), transparent 34%),
+      radial-gradient(circle at 72% 10%, rgba(255, 255, 255, 0.12), transparent 38%);
+    pointer-events: none;
+    opacity: 0.8;
+  }
+
+  .music-stage {
+    position: relative;
+    flex: 0 0 46%;
+    min-height: 280px;
+    padding: 24px clamp(20px, 3vw, 38px) 126px;
+    color: #f9fff9;
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, rgba(7, 9, 8, 0.98), rgba(12, 15, 13, 0.98)),
+      radial-gradient(circle at 85% 22%, rgba(34, 197, 94, 0.18), transparent 36%);
+  }
+
+  .music-stage::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.04), transparent 42%),
+      repeating-linear-gradient(90deg, transparent 0 23px, rgba(255, 255, 255, 0.035) 24px);
+    pointer-events: none;
+    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 88%);
+  }
+
+  .stage-topline {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+  }
+
+  .station-lockup {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px;
-    border-radius: 12px;
-    background: rgba(4, 12, 9, 0.55);
-    border: 1px solid rgba(110, 231, 183, 0.18);
-    transition: all 0.2s;
+    min-width: 0;
+  }
+
+  .station-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    color: #06130d;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    background: linear-gradient(145deg, #f4fff8, #8ff0b0);
+    box-shadow: 0 0 24px rgba(74, 222, 128, 0.34);
+  }
+
+  .station-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .station-name {
+    font-size: clamp(16px, 2vw, 24px);
+    line-height: 1;
+    font-weight: 800;
+    letter-spacing: -0.045em;
+  }
+
+  .station-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    color: #34d399;
+    font-size: 12px;
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: #34d399;
+    box-shadow: 0 0 14px rgba(52, 211, 153, 0.75);
+  }
+
+  .status-dot.talking {
+    animation: onAirPulse 1.1s ease-in-out infinite;
+  }
+
+  .stage-clock {
+    color: rgba(248, 255, 250, 0.82);
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stage-body {
+    position: relative;
+    z-index: 2;
+    height: calc(100% - 56px);
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 0.92fr) minmax(320px, 1.08fr);
+    align-items: stretch;
+    gap: clamp(18px, 3vw, 42px);
+  }
+
+  .track-stack {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .stage-eyebrow {
+    color: rgba(202, 255, 224, 0.62);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .track-title {
+    max-width: 720px;
+    color: #ffffff;
+    font-size: clamp(26px, 3.9vw, 48px);
+    line-height: 0.95;
+    font-weight: 900;
+    letter-spacing: -0.07em;
+    text-wrap: balance;
+  }
+
+  .track-artist {
+    margin-top: 12px;
+    color: rgba(239, 255, 246, 0.68);
+    font-size: clamp(12px, 1.2vw, 14px);
+    font-weight: 600;
+  }
+
+  .lyric-pill {
+    width: min(100%, 540px);
+    margin-top: 18px;
+    padding: 11px 14px;
+    border-radius: 16px;
+    color: rgba(240, 255, 247, 0.84);
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .rhythm-deck {
+    position: relative;
+    min-height: 138px;
+    border-radius: 26px;
+    overflow: hidden;
+    align-self: stretch;
+    background:
+      radial-gradient(circle at 50% 92%, rgba(74, 222, 128, 0.26), transparent 52%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015));
+    border: 1px solid rgba(240, 255, 246, 0.1);
+  }
+
+  .rhythm-deck::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(to top, rgba(52, 211, 153, 0.12), transparent 48%),
+      repeating-linear-gradient(0deg, transparent 0 17px, rgba(255, 255, 255, 0.045) 18px);
+    pointer-events: none;
+  }
+
+  .rhythm-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .idle-bars {
+    position: absolute;
+    inset: auto 18px 18px;
+    height: 44%;
+    display: flex;
+    align-items: end;
+    gap: 3px;
+    opacity: 0.42;
+    pointer-events: none;
+  }
+
+  .idle-bars span {
+    flex: 1;
+    min-width: 2px;
+    border-radius: 999px 999px 0 0;
+    background: linear-gradient(to top, rgba(255, 255, 255, 0.9), rgba(167, 243, 208, 0.18));
+    animation: breathe 2.8s ease-in-out infinite;
+  }
+
+  .stage-control-deck {
+    position: absolute;
+    left: clamp(20px, 3vw, 38px);
+    right: clamp(20px, 3vw, 38px);
+    bottom: 72px;
+    z-index: 3;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .stage-progress {
+    position: relative;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    color: rgba(248, 255, 250, 0.82);
+    font-size: 11px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .wave-lane {
+    position: relative;
+    height: 34px;
+    border-radius: 999px;
+    overflow: hidden;
     cursor: pointer;
-    margin-bottom: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
-  .rec-card:hover {
-    background: rgba(9, 24, 18, 0.66);
-    border-color: rgba(74, 222, 128, 0.4);
+  .stage-wave-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.64;
+  }
+
+  .progress-rail {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    top: 50%;
+    height: 3px;
+    transform: translateY(-50%);
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .progress-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #f9fff9, #34d399);
+    box-shadow: 0 0 18px rgba(52, 211, 153, 0.55);
+  }
+
+  .stage-controls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .stage-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    color: #f9fff9;
+    background: rgba(255, 255, 255, 0.08);
+    transition: transform 0.18s, background 0.18s, border-color 0.18s;
+  }
+
+  .stage-btn:hover {
     transform: translateY(-1px);
+    border-color: rgba(74, 222, 128, 0.42);
+    background: rgba(255, 255, 255, 0.14);
   }
 
-  .rec-cover { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; background: rgba(255, 255, 255, 0.05); }
-  .rec-info { flex: 1; min-width: 0; }
-  .rec-title { color: #f0fff8; font-size: 12px; font-weight: 600; }
-  .rec-artist { color: rgba(183, 215, 197, 0.66); font-size: 11px; }
-  .rec-reason { color: #86efac; font-size: 10px; margin-top: 2px; }
+  .stage-btn.play {
+    width: 48px;
+    height: 48px;
+    color: #06130d;
+    border-color: rgba(255, 255, 255, 0.8);
+    background: #f8fff9;
+    box-shadow: 0 0 26px rgba(52, 211, 153, 0.42);
+  }
 
-  .cl-view { display: none; }
-  .cl-view.active { display: flex; flex-direction: column; }
+  .stage-volume {
+    position: relative;
+  }
+
+  .stage-volume-pop {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 10px);
+    min-width: 184px;
+    padding: 12px;
+    border-radius: 18px;
+    color: #f8fff9;
+    background: rgba(7, 11, 9, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+  }
+
+  .script-paper {
+    position: relative;
+    z-index: 4;
+    --sand-x: 72%;
+    --sand-y: 22%;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: -54px clamp(12px, 2.2vw, 28px) clamp(12px, 2vw, 24px);
+    padding: clamp(20px, 2.5vw, 30px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: #111814;
+    border-radius: 34px 34px 30px 30px;
+    background:
+      radial-gradient(circle, rgba(5, 22, 13, 0.08) 1px, transparent 1.2px) 0 0 / 14px 14px,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(243, 242, 234, 0.97));
+    box-shadow:
+      0 -20px 60px rgba(0, 0, 0, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  }
+
+  .script-paper::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 64px;
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), transparent);
+    pointer-events: none;
+  }
+
+  .script-paper::after {
+    content: '';
+    position: absolute;
+    inset: -18%;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at var(--sand-x) var(--sand-y), rgba(16, 185, 129, 0.22), transparent 14%),
+      radial-gradient(circle at calc(var(--sand-x) + 12%) calc(var(--sand-y) + 20%), rgba(5, 150, 105, 0.12), transparent 18%),
+      repeating-radial-gradient(circle at 50% 50%, rgba(9, 15, 11, 0.13) 0 1px, transparent 1px 8px);
+    mix-blend-mode: multiply;
+    opacity: 0.42;
+    animation: sandDrift 9s ease-in-out infinite alternate;
+  }
+
+  .sand-stream {
+    position: absolute;
+    z-index: 1;
+    top: 72px;
+    bottom: 80px;
+    width: 10px;
+    border-radius: 999px;
+    pointer-events: none;
+    background:
+      linear-gradient(to bottom, transparent, rgba(16, 185, 129, 0.16), rgba(17, 24, 20, 0.12), transparent);
+    filter: blur(0.3px);
+    opacity: 0.42;
+    animation: sandFall 4.8s ease-in-out infinite;
+  }
+
+  .sand-stream.s1 { left: 18%; animation-delay: -0.8s; }
+  .sand-stream.s2 { left: 50%; width: 7px; animation-delay: -2.4s; opacity: 0.28; }
+  .sand-stream.s3 { right: 17%; animation-delay: -3.2s; }
+
+  .script-header {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+  }
+
+  .script-kicker {
+    color: #047857;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  .script-title {
+    margin-top: 3px;
+    color: #0c120f;
+    font-size: clamp(20px, 2.6vw, 30px);
+    line-height: 0.96;
+    font-weight: 900;
+    letter-spacing: -0.06em;
+  }
+
+  .script-badge {
+    flex-shrink: 0;
+    border-radius: 999px;
+    padding: 7px 11px;
+    color: #064e3b;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.26);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .script-body {
+    position: relative;
+    z-index: 2;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  .script-current {
+    padding: 18px;
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.62);
+    border: 1px solid rgba(15, 23, 42, 0.06);
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+  }
+
+  .script-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    color: rgba(15, 23, 42, 0.46);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .script-meta strong {
+    color: #047857;
+  }
+
+  .script-text {
+    color: #111814;
+    font-size: clamp(14px, 1.45vw, 16px);
+    line-height: 1.55;
+    font-weight: 760;
+    letter-spacing: -0.015em;
+    white-space: pre-wrap;
+  }
+
+  .script-reason {
+    margin-top: 10px;
+    color: rgba(17, 24, 20, 0.62);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .script-history {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .script-line {
+    padding: 12px 14px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.36);
+    color: rgba(17, 24, 20, 0.66);
+    border: 1px solid rgba(15, 23, 42, 0.045);
+  }
+
+  .script-line.user {
+    margin-left: auto;
+    max-width: 88%;
+    background: rgba(16, 185, 129, 0.12);
+    border-color: rgba(16, 185, 129, 0.18);
+    color: rgba(6, 78, 59, 0.9);
+  }
+
+  .script-line.assistant,
+  .script-line.speech {
+    max-width: 94%;
+  }
+
+  .script-line p {
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .recommend-strip {
+    position: relative;
+    z-index: 2;
+    margin-bottom: 12px;
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .paper-rec-card {
+    min-width: 236px;
+    max-width: 280px;
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 18px;
+    background: rgba(7, 9, 8, 0.88);
+    color: #f8fff9;
+    border: 1px solid rgba(52, 211, 153, 0.22);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
+  }
+
+  .paper-rec-cover {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    object-fit: cover;
+    background: linear-gradient(145deg, #111, #34d399);
+  }
+
+  .paper-rec-title {
+    color: #f8fff9;
+    font-size: 12px;
+    font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .paper-rec-artist {
+    color: rgba(236, 253, 245, 0.62);
+    font-size: 11px;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .paper-rec-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .paper-rec-actions button {
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 999px;
+    color: #06130d;
+    background: #f8fff9;
+    cursor: pointer;
+    font-weight: 900;
+  }
+
+  .compact-command {
+    position: relative;
+    z-index: 3;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(15, 23, 42, 0.08);
+  }
+
+  .activity-row {
+    display: flex;
+    gap: 7px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  .script-chip {
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    background: rgba(255, 255, 255, 0.48);
+    color: rgba(17, 24, 20, 0.72);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.18s;
+  }
+
+  .script-chip:hover,
+  .script-chip.active {
+    color: #064e3b;
+    border-color: rgba(16, 185, 129, 0.34);
+    background: rgba(209, 250, 229, 0.76);
+  }
+
+  .command-input-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .command-input-row input {
+    min-width: 0;
+    height: 42px;
+    border: 1px solid rgba(15, 23, 42, 0.09);
+    border-radius: 16px;
+    padding: 0 14px;
+    color: #111814;
+    background: rgba(255, 255, 255, 0.72);
+    outline: none;
+    font-size: 12px;
+    font-family: inherit;
+  }
+
+  .sand-particle {
+    position: absolute;
+    z-index: 1;
+    width: var(--p-size, 3px);
+    height: var(--p-size, 3px);
+    left: var(--p-x, 50%);
+    top: var(--p-y, 50%);
+    border-radius: 999px;
+    pointer-events: none;
+    background: radial-gradient(circle, rgba(4, 24, 14, 0.72), rgba(16, 185, 129, 0.24) 48%, transparent 72%);
+    opacity: var(--p-opacity, 0.18);
+    transform: translate(-50%, -50%) scale(var(--p-scale, 1));
+    filter: blur(var(--p-blur, 0px));
+    transition: transform 0.18s ease, opacity 0.18s ease, filter 0.18s ease;
+    mix-blend-mode: multiply;
+  }
+
+  .command-input-row input:focus {
+    border-color: rgba(16, 185, 129, 0.42);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+  }
+
+  .command-send,
+  .voice-toggle {
+    height: 42px;
+    border: 0;
+    border-radius: 16px;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 900;
+  }
+
+  .command-send {
+    width: 46px;
+    display: grid;
+    place-items: center;
+    color: #f8fff9;
+    background: #07110c;
+  }
+
+  .voice-toggle {
+    padding: 0 12px;
+    color: #064e3b;
+    background: rgba(16, 185, 129, 0.14);
+    border: 1px solid rgba(16, 185, 129, 0.24);
+    font-size: 11px;
+  }
 
   @media (max-width: 1024px) {
     .app-shell::before {
@@ -390,6 +1065,123 @@
       border-radius: 22px;
     }
     .pl-slide { width: 300px; }
+  }
+
+  @media (max-width: 820px) {
+    .dj-broadcast-view {
+      padding: 8px 8px 12px;
+    }
+
+    .broadcast-frame {
+      max-width: 430px;
+    }
+
+    .broadcast-shell {
+      border-radius: 34px;
+    }
+
+    .music-stage {
+      flex-basis: 45%;
+      min-height: 310px;
+      padding: 20px 20px 112px;
+    }
+
+    .stage-body {
+      height: calc(100% - 52px);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .track-stack {
+      justify-content: flex-start;
+    }
+
+    .track-title {
+      font-size: clamp(24px, 8vw, 36px);
+    }
+
+    .lyric-pill {
+      margin-top: 12px;
+      padding: 9px 12px;
+      font-size: 12px;
+    }
+
+    .rhythm-deck {
+      flex: 1 1 auto;
+      min-height: 92px;
+    }
+
+    .stage-control-deck {
+      left: 18px;
+      right: 18px;
+      bottom: 58px;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    .stage-controls {
+      justify-content: center;
+    }
+
+    .script-paper {
+      margin: -48px 0 0;
+      padding: 20px 18px 18px;
+      border-radius: 30px 30px 28px 28px;
+    }
+
+    .script-header {
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .script-title {
+      font-size: 22px;
+    }
+
+    .script-current {
+      padding: 15px;
+      border-radius: 22px;
+    }
+
+    .script-text {
+      font-size: 14px;
+    }
+
+    .script-history {
+      gap: 8px;
+      margin-top: 9px;
+    }
+
+    .script-line {
+      padding: 10px 12px;
+    }
+
+    .command-input-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .voice-toggle {
+      display: none;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .stage-topline {
+      margin-bottom: 12px;
+    }
+
+    .stage-clock {
+      font-size: 11px;
+    }
+
+    .station-name {
+      font-size: 18px;
+    }
+
+    .paper-rec-card {
+      min-width: 220px;
+    }
   }
 </style>
 </head>
@@ -427,11 +1219,6 @@ const SkipBack = () => (
 const SkipFwd = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <polygon points="5 4 15 12 5 20 5 4" /><line x1="19" x2="19" y1="5" y2="19" />
-  </svg>
-);
-const HeartIcon = ({ filled }) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
-    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
   </svg>
 );
 const VolumeIcon = () => (
@@ -486,6 +1273,56 @@ function cleanActionText(text) {
   return text.replace(/\[\[\w+(?::[^\]]*)?\]\]/g, '').trim();
 }
 
+function normalizeTrackText(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[《》「」『』“”"']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function splitTrackArg(arg) {
+  const raw = String(arg || '').trim();
+  if (!raw) return { title: '', artist: '' };
+  const parts = raw.includes('—') ? raw.split('—') : raw.split(/\s+-\s+/);
+  return {
+    title: (parts[0] || '').trim(),
+    artist: parts.slice(1).join(' - ').trim(),
+  };
+}
+
+function trackMatchScore(song, wantedTitle, wantedArtist) {
+  const title = normalizeTrackText(song?.title);
+  const artist = normalizeTrackText(song?.artist);
+  const targetTitle = normalizeTrackText(wantedTitle);
+  const targetArtist = normalizeTrackText(wantedArtist);
+  let score = 0;
+  let titleMatched = !targetTitle;
+  if (targetTitle && title) {
+    if (title === targetTitle) { score += 80; titleMatched = true; }
+    else if (title.includes(targetTitle) || targetTitle.includes(title)) { score += 45; titleMatched = true; }
+  }
+  if (targetArtist && artist) {
+    if (artist === targetArtist) score += 30;
+    else if (artist.includes(targetArtist) || targetArtist.includes(artist)) score += 16;
+  }
+  if (targetTitle && !titleMatched) return 0;
+  return score;
+}
+
+function detectSpeechLang(text) {
+  const value = String(text || '');
+  const hangul = /[\uac00-\ud7af]/.test(value);
+  const kana = /[\u3040-\u30ff]/.test(value);
+  const cjkCount = (value.match(/[\u4e00-\u9fff]/g) || []).length;
+  const latinCount = (value.match(/[A-Za-z]/g) || []).length;
+  if (hangul && cjkCount < 6) return 'ko-KR';
+  if (kana && cjkCount < 8) return 'ja-JP';
+  if (latinCount > 8 && latinCount > cjkCount * 1.4) return 'en-US';
+  return 'zh-CN';
+}
+
 /* ═════════════════════════════════════════════════
  * 3. State Reducer
  * ═════════════════════════════════════════════════ */
@@ -494,19 +1331,17 @@ const initialState = {
   currentTime: 0,
   duration: 0,
   volume: 0.8,
-  progress: 0,
   playlist: { songs: [], current_index: -1 },
   currentSong: null,
   lyricsLines: [],
   currentLyricIndex: -1,
   currentMode: 'dj',
-  currentView: 'dj',
   appState: 'idle',
   isDjTalking: false,
   speechText: '',
-  segueType: null,
   reasonText: '',
   showReactions: false,
+  pendingTransition: false,
   pendingSong: null,
   pendingNext: false,
   transitionTriggered: false,
@@ -514,17 +1349,8 @@ const initialState = {
   userActivity: '',
   lastMood: 'chill',
   recentTransitions: [],
-  lastReason: '',
-  lastSegue: '',
   weather: { icon: '☀️', temp: '20°', time: '' },
-  totalSeconds: 0,
-  liked: false,
   directPlay: false,
-  directSong: null,
-  clShuffle: false,
-  clRepeat: 'off',
-  clVisualMode: 'Arcs',
-  clAudioSidebar: null,
   voiceMode: 'realtime',
 };
 
@@ -541,11 +1367,11 @@ function reducer(state, action) {
     case 'CLEAR_LYRICS': return { ...state, lyricsLines: [], currentLyricIndex: -1 };
     case 'SET_LYRIC_INDEX': return { ...state, currentLyricIndex: action.payload };
     case 'SET_MODE': return { ...state, currentMode: action.payload };
-    case 'SET_VIEW': return { ...state, currentView: action.payload };
     case 'SET_APP_STATE': return { ...state, appState: action.payload };
     case 'SET_DJ_TALKING': return { ...state, isDjTalking: action.payload };
-    case 'SET_SPEECH': return { ...state, speechText: action.payload.text || '', segueType: action.payload.segue || null, reasonText: action.payload.reason || '', showReactions: action.payload.showReactions !== false };
-    case 'CLEAR_SPEECH': return { ...state, speechText: '', segueType: null, reasonText: '', showReactions: false };
+    case 'SET_SPEECH': return { ...state, speechText: action.payload.text || '', reasonText: action.payload.reason || '', showReactions: action.payload.showReactions !== false };
+    case 'CLEAR_SPEECH': return { ...state, speechText: '', reasonText: '', showReactions: false };
+    case 'SET_PENDING_TRANSITION': return { ...state, pendingTransition: action.payload };
     case 'SET_PENDING_SONG': return { ...state, pendingSong: action.payload };
     case 'SET_PENDING_NEXT': return { ...state, pendingNext: action.payload };
     case 'SET_TRANSITION_TRIGGERED': return { ...state, transitionTriggered: action.payload };
@@ -558,17 +1384,7 @@ function reducer(state, action) {
       return { ...state, recentTransitions: t.slice(-10) };
     }
     case 'SET_WEATHER': return { ...state, weather: action.payload };
-    case 'SET_STATS': return { ...state, totalSeconds: action.payload };
-    case 'SET_LIKED': return { ...state, liked: action.payload };
-    case 'SET_DIRECT_PLAY': return { ...state, directPlay: action.payload.direct, directSong: action.payload.song };
-    case 'TOGGLE_SHUFFLE': return { ...state, clShuffle: !state.clShuffle };
-    case 'CYCLE_REPEAT': {
-      const modes = ['off', 'all', 'one'];
-      const idx = modes.indexOf(state.clRepeat);
-      return { ...state, clRepeat: modes[(idx + 1) % modes.length] };
-    }
-    case 'SET_VISUAL_MODE': return { ...state, clVisualMode: action.payload };
-    case 'TOGGLE_SIDEBAR': return { ...state, clAudioSidebar: state.clAudioSidebar === action.payload ? null : action.payload };
+    case 'SET_DIRECT_PLAY': return { ...state, directPlay: action.payload.direct };
     case 'SET_VOICE_MODE': return { ...state, voiceMode: action.payload };
     default: return state;
   }
@@ -589,7 +1405,6 @@ function useAudioPlayer(audioRef, state, dispatch) {
     const song = songs[idx];
     dispatch({ type: 'SET_CURRENT_SONG', payload: song });
     dispatch({ type: 'SET_CURRENT_INDEX', payload: idx });
-    dispatch({ type: 'SET_LIKED', payload: false });
     const audio = audioRef.current;
     if (!audio) return;
     if (song.source === 'netease' && song.netease_id) {
@@ -607,7 +1422,8 @@ function useAudioPlayer(audioRef, state, dispatch) {
     const audio = audioRef.current;
     if (!audio) return;
     if ((!audio.src || audio.src === window.location.href) && state.playlist.songs.length > 0) {
-      loadSong(0);
+      const idx = state.playlist.current_index >= 0 ? state.playlist.current_index : 0;
+      loadSong(idx);
       setTimeout(() => audio.play().catch(() => {}), 100);
       return;
     }
@@ -618,7 +1434,7 @@ function useAudioPlayer(audioRef, state, dispatch) {
         audio.addEventListener('canplay', () => audio.play().catch(() => {}), { once: true });
       }
     }
-  }, [state.playlist.songs.length]);
+  }, [state.playlist.songs.length, state.playlist.current_index, loadSong]);
 
   const pause = useCallback(() => {
     audioRef.current?.pause();
@@ -633,7 +1449,7 @@ function useAudioPlayer(audioRef, state, dispatch) {
     if (!songs.length) return;
     loadSong((state.playlist.current_index + 1) % songs.length);
     setTimeout(() => play(), 200);
-  }, [state.playlist]);
+  }, [state.playlist, loadSong, play]);
 
   const prevTrack = useCallback(() => {
     const songs = state.playlist.songs;
@@ -642,7 +1458,7 @@ function useAudioPlayer(audioRef, state, dispatch) {
     if (i < 0) i = songs.length - 1;
     loadSong(i);
     if (state.isPlaying) play();
-  }, [state.playlist, state.isPlaying]);
+  }, [state.playlist, state.isPlaying, loadSong, play]);
 
   const seekTo = useCallback((pct) => {
     const audio = audioRef.current;
@@ -661,18 +1477,38 @@ function useAudioPlayer(audioRef, state, dispatch) {
     const onEnded = () => {
       if (state.directPlay) {
         dispatch({ type: 'SET_DIRECT_PLAY', payload: { direct: false, song: null } });
+        if (state.currentMode === 'dj') {
+          if (state.appState !== 'idle' || state.isDjTalking) {
+            if (state.pendingSong) {
+              dispatch({ type: 'SET_PENDING_NEXT', payload: true });
+            } else {
+              dispatch({ type: 'SET_PENDING_TRANSITION', payload: true });
+            }
+          } else {
+            dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: true });
+          }
+          return;
+        }
         if (state.playlist.songs.length > 0 && state.playlist.current_index >= 0) {
           loadSong(state.playlist.current_index);
           setTimeout(() => play(), 200);
         }
         return;
       }
-      if (state.appState === 'speaking' || state.isDjTalking) {
-        dispatch({ type: 'SET_PENDING_NEXT', payload: true });
+      if (state.currentMode === 'dj') {
+        if (state.appState !== 'idle' || state.isDjTalking) {
+          if (state.pendingSong) {
+            dispatch({ type: 'SET_PENDING_NEXT', payload: true });
+          } else {
+            dispatch({ type: 'SET_PENDING_TRANSITION', payload: true });
+          }
+          return;
+        }
+        dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: true });
         return;
       }
       dispatch({ type: 'CLEAR_SPEECH' });
-      dispatch({ type: 'TRANSITION_TRIGGERED', payload: false });
+      dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
       nextTrack();
     };
     const onTimeUpdate = () => {
@@ -695,18 +1531,10 @@ function useAudioPlayer(audioRef, state, dispatch) {
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('loadedmetadata', onLoadedMeta);
     };
-  }, [state.directPlay, state.appState, state.isDjTalking, state.playlist]);
+  }, [state.directPlay, state.appState, state.isDjTalking, state.pendingSong, state.playlist, state.currentMode, state.transitionTriggered, loadSong, play, nextTrack]);
 
-  // Transition trigger
-  useEffect(() => {
-    if (state.transitionTriggered) return;
-    if (state.currentMode !== 'dj') return;
-    const audio = audioRef.current;
-    if (!audio || !audio.duration || isNaN(audio.duration)) return;
-    if (audio.duration - audio.currentTime <= 12 && audio.duration - audio.currentTime > 0) {
-      dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: true });
-    }
-  }, [state.currentTime, state.duration, state.currentMode, state.transitionTriggered]);
+  // DJ transitions are triggered by the real `ended` event. Avoid pre-roll
+  // transitions so another song is never playing underneath the next-song cue.
 
   // Volume sync
   useEffect(() => {
@@ -771,9 +1599,9 @@ function useAudioVisualizer(audioRef, isPlaying) {
         const h = (freqData[idx] / 255) * SH * 0.85;
         const x = i * (SW / barCount);
         const grad = sCtx.createLinearGradient(0, SH, 0, SH - h);
-        grad.addColorStop(0, 'rgba(6,182,212,0.7)');
-        grad.addColorStop(0.5, 'rgba(168,85,247,0.4)');
-        grad.addColorStop(1, 'rgba(6,182,212,0.15)');
+        grad.addColorStop(0, 'rgba(248,255,249,0.88)');
+        grad.addColorStop(0.5, 'rgba(52,211,153,0.62)');
+        grad.addColorStop(1, 'rgba(52,211,153,0.12)');
         sCtx.fillStyle = grad;
         sCtx.fillRect(x, SH - h, barW, h);
       }
@@ -783,9 +1611,9 @@ function useAudioVisualizer(audioRef, isPlaying) {
       a.getByteTimeDomainData(waveData);
       wCtx.clearRect(0, 0, WW, WH);
       wCtx.beginPath();
-      wCtx.strokeStyle = 'rgba(6,182,212,0.5)';
+      wCtx.strokeStyle = 'rgba(248,255,249,0.62)';
       wCtx.lineWidth = 1.5;
-      wCtx.shadowColor = 'rgba(6,182,212,0.3)';
+      wCtx.shadowColor = 'rgba(52,211,153,0.38)';
       wCtx.shadowBlur = 6;
       for (let i = 0; i < waveData.length; i++) {
         const x = (i / waveData.length) * WW;
@@ -890,11 +1718,18 @@ function useTTS(state, dispatch, onEnd) {
     const cleanText = text.replace(/\[em:[^\]]*\]/g, '').replace(/\s+/g, ' ').trim();
     if (!cleanText) { dispatch({ type: 'SET_DJ_TALKING', payload: false }); if (onEndRef.current) onEndRef.current(); return; }
     const u = new SpeechSynthesisUtterance(cleanText);
-    u.lang = 'zh-CN'; u.volume = 0.85;
+    const lang = detectSpeechLang(cleanText);
+    u.lang = lang; u.volume = 0.85;
     const presets = { energetic: { rate: 1.08, pitch: 1.15 }, chill: { rate: 0.9, pitch: 0.95 }, melancholy: { rate: 0.85, pitch: 0.85 }, playful: { rate: 1.05, pitch: 1.1 }, nostalgic: { rate: 0.88, pitch: 0.9 }, default: { rate: 0.95, pitch: 1.0 } };
     const p = presets[mood] || presets['default'];
     u.rate = p.rate; u.pitch = p.pitch;
-    if (fallbackVoice.current) u.voice = fallbackVoice.current;
+    const voices = speechSynthesis.getVoices();
+    const langPrefix = lang.split('-')[0].toLowerCase();
+    const matchedVoice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix))
+      || fallbackVoice.current
+      || voices.find(v => v.lang.startsWith('zh') || v.lang.startsWith('en'))
+      || null;
+    if (matchedVoice) u.voice = matchedVoice;
     u.onend = () => { dispatch({ type: 'SET_DJ_TALKING', payload: false }); if (onEndRef.current) onEndRef.current(); };
     window.speechSynthesis.speak(u);
   }, []);
@@ -1067,14 +1902,15 @@ const BackgroundEffects = React.memo(() => {
           animation: `twinkle ${s.duration}s infinite`
         }} />
       ))}
-      <div className="absolute top-0 left-1/3 w-[600px] h-[600px] bg-gradient-to-br from-cyan-500/20 to-purple-500/10 blur-3xl rounded-full" />
-      <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-gradient-to-tl from-purple-600/20 to-pink-500/10 blur-3xl rounded-full" />
+      <div className="absolute top-[-120px] left-[8%] w-[620px] h-[620px] bg-emerald-400/12 blur-3xl rounded-full" />
+      <div className="absolute bottom-[-160px] right-[10%] w-[560px] h-[560px] bg-white/8 blur-3xl rounded-full" />
+      <div className="absolute inset-x-0 bottom-0 h-1/2 bg-[radial-gradient(circle_at_center,rgba(52,211,153,0.16),transparent_58%)]" />
     </div>
   );
 });
 
 // ── Top Navigation ──
-const TopNav = ({ state, dispatch, onToggleMode, onToggleView, onTogglePlaylist, playlistOpen, onSearch }) => {
+const TopNav = ({ state, onToggleMode, onTogglePlaylist, playlistOpen, onSearch }) => {
   const [clock, setClock] = useState('');
   useEffect(() => {
     const tk = () => setClock(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
@@ -1082,26 +1918,26 @@ const TopNav = ({ state, dispatch, onToggleMode, onToggleView, onTogglePlaylist,
   }, []);
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-[100] h-[52px] flex items-center justify-between px-6"
-      style={{ background: 'rgba(8,8,20,0.55)', backdropFilter: 'blur(24px) saturate(180%)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-      <div className="flex items-center gap-6">
-        <div className="text-[15px] font-bold flex items-center gap-1.5" style={{
-          background: 'linear-gradient(135deg, #06b6d4, #60a5fa, #a855f7)',
-          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
-        }}>
-          <span className="w-[7px] h-[7px] rounded-full inline-block" style={{ background: '#06b6d4', boxShadow: '0 0 10px rgba(6,182,212,0.5)' }}></span>
-          AI DJ
+    <div className="fixed top-0 left-0 right-0 z-[100] h-[52px] flex items-center justify-between px-4 sm:px-6"
+      style={{ background: 'rgba(4,7,5,0.68)', backdropFilter: 'blur(22px) saturate(160%)', borderBottom: '1px solid rgba(240,255,246,0.08)' }}>
+      <div className="flex items-center gap-3 sm:gap-5 min-w-0">
+        <div className="text-[15px] font-black tracking-[-0.03em] flex items-center gap-2 text-emerald-50 min-w-0">
+          <span className="w-[8px] h-[8px] rounded-full inline-block bg-emerald-400" style={{ boxShadow: '0 0 14px rgba(52,211,153,0.8)' }}></span>
+          <span className="truncate">clauseekio</span>
         </div>
-        <button onClick={onTogglePlaylist} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${playlistOpen ? 'text-cyan-400 bg-cyan-500/10 border border-cyan-500/20' : 'text-gray-500 hover:text-gray-300 bg-transparent border border-transparent'}`}>
+        <button onClick={onTogglePlaylist} className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${playlistOpen ? 'text-emerald-200 bg-emerald-400/12 border border-emerald-300/25' : 'text-emerald-50/58 hover:text-emerald-50 bg-white/[0.03] border border-white/[0.06]'}`}>
           歌单
         </button>
+        <button onClick={onSearch} className="hidden sm:inline-flex px-3 py-1.5 rounded-full text-xs font-bold text-emerald-50/58 hover:text-emerald-50 bg-white/[0.03] border border-white/[0.06] transition-all">
+          搜索
+        </button>
       </div>
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-1 text-xs text-gray-400">
+      <div className="flex items-center gap-2 sm:gap-4">
+        <div className="hidden sm:flex items-center gap-1 text-xs text-emerald-50/56">
           <span>{state.weather.icon}</span><span>{state.weather.temp}</span>
         </div>
-        <span className="text-xs text-gray-400">{clock}</span>
-        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: state.currentMode === 'dj' ? '#06b6d4' : '#6b7280' }}>
+        <span className="hidden sm:inline text-xs text-emerald-50/56">{clock}</span>
+        <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider" style={{ color: state.currentMode === 'dj' ? '#86efac' : 'rgba(240,255,246,0.4)' }}>
           <span className="w-[6px] h-[6px] rounded-full" style={{
             background: state.currentMode === 'dj' ? '#22c55e' : '#6b7280',
             boxShadow: state.currentMode === 'dj' ? '0 0 8px #22c55e' : 'none',
@@ -1111,74 +1947,72 @@ const TopNav = ({ state, dispatch, onToggleMode, onToggleView, onTogglePlaylist,
         </div>
         <button onClick={onToggleMode} className="cursor-pointer px-3 py-1 rounded-2xl border text-[11px] font-semibold transition-all"
           style={state.currentMode === 'dj' ? {
-            borderColor: 'rgba(6,182,212,0.2)', background: 'rgba(6,182,212,0.08)', color: '#06b6d4'
+            borderColor: 'rgba(134,239,172,0.26)', background: 'rgba(22,163,74,0.1)', color: '#bbf7d0'
           } : {
-            borderColor: 'rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', color: '#9898b8'
+            borderColor: 'rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', color: 'rgba(240,255,246,0.58)'
           }}>
-          {state.currentMode === 'dj' ? '🎧 DJ' : '🎵 听歌'}
-        </button>
-        <button onClick={onToggleView} className="cursor-pointer px-3 py-1 rounded-2xl border text-[11px] font-semibold transition-all"
-          style={state.currentView === 'claudio' ? {
-            borderColor: 'rgba(94,232,197,0.3)', background: 'rgba(94,232,197,0.07)', color: '#5ee8c5'
-          } : {
-            borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', color: '#9898b8'
-          }}>
-          {state.currentView === 'claudio' ? '🎧 DJ界面' : '✨ Claudio'}
+          {state.currentMode === 'dj' ? 'DJ' : '听歌'}
         </button>
       </div>
     </div>
   );
 };
 
-// ── Progress Bar ──
-const ProgressBar = ({ currentTime, duration, onSeek }) => {
-  const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const barRef = useRef(null);
-  const handleClick = (e) => {
-    if (!barRef.current) return;
-    const rect = barRef.current.getBoundingClientRect();
-    onSeek((e.clientX - rect.left) / rect.width);
+// ── New Broadcast Interface ──
+const StageProgress = ({ currentTime, duration, waveformRef, onSeek }) => {
+  const pct = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
+  const laneRef = useRef(null);
+  const handleSeek = (e) => {
+    if (!laneRef.current) return;
+    const rect = laneRef.current.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    onSeek(ratio);
   };
+
   return (
-    <div className="w-full mt-4 mb-3">
-      <div className="flex items-center gap-3 text-xs text-gray-400 mb-2">
-        <span>{fmtTime(currentTime)}</span>
-        <div ref={barRef} className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden cursor-pointer" onClick={handleClick}>
-          <div className="h-full rounded-full transition-all duration-100" style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #06b6d4, #a855f7)', boxShadow: '0 0 12px rgba(6,182,212,0.6)' }} />
+    <div className="stage-progress">
+      <span>{fmtTime(currentTime)}</span>
+      <div ref={laneRef} className="wave-lane" onClick={handleSeek}>
+        <canvas ref={waveformRef} width="520" height="56" className="stage-wave-canvas" />
+        <div className="progress-rail">
+          <div className="progress-fill" style={{ width: `${pct}%` }} />
         </div>
-        <span>{fmtTime(duration)}</span>
       </div>
+      <span>{fmtTime(duration)}</span>
     </div>
   );
 };
 
-// ── Playback Controls ──
-const PlaybackControls = ({ isPlaying, volume, onTogglePlay, onPrev, onNext, onVolume }) => {
+const StageControls = ({ isPlaying, volume, onTogglePlay, onPrev, onNext, onVolume }) => {
   const [volPopup, setVolPopup] = useState(false);
   const volRef = useRef(null);
+
   useEffect(() => {
     if (!volPopup) return;
     const h = (e) => { if (volRef.current && !volRef.current.contains(e.target)) setVolPopup(false); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [volPopup]);
+
   return (
-    <div className="flex items-center justify-center gap-3">
-      <button onClick={onPrev} className="p-2.5 bg-white/5 rounded-xl hover:bg-white/10 transition-all text-white"><SkipBack /></button>
-      <button onClick={onTogglePlay} className="p-4 rounded-xl shadow-lg hover:scale-105 transition-all text-white"
-        style={{ background: 'linear-gradient(135deg, #06b6d4, #a855f7)', boxShadow: '0 0 30px rgba(6,182,212,0.5)' }}>
+    <div className="stage-controls">
+      <button onClick={onPrev} className="stage-btn" aria-label="上一首"><SkipBack /></button>
+      <button onClick={onTogglePlay} className="stage-btn play" aria-label={isPlaying ? '暂停' : '播放'}>
         {isPlaying ? <PauseIcon /> : <PlayIcon />}
       </button>
-      <button onClick={onNext} className="p-2.5 bg-white/5 rounded-xl hover:bg-white/10 transition-all text-white"><SkipFwd /></button>
-      <div className="relative flex items-center gap-2 ml-3" ref={volRef}>
-        <button onClick={() => setVolPopup(!volPopup)} className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition-all"><VolumeIcon /></button>
+      <button onClick={onNext} className="stage-btn" aria-label="下一首"><SkipFwd /></button>
+      <div className="stage-volume" ref={volRef}>
+        <button onClick={() => setVolPopup(v => !v)} className="stage-btn" aria-label="音量"><VolumeIcon /></button>
         {volPopup && (
-          <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 bg-gray-900/95 backdrop-blur-lg border border-white/10 rounded-xl p-3 shadow-2xl flex items-center gap-3 z-50">
-            <span className="text-gray-400 text-xs">{Math.round(volume * 100)}%</span>
-            <input type="range" min="0" max="100" value={volume * 100} onChange={e => onVolume(Number(e.target.value) / 100)}
-              className="w-32 h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-lg"
-              style={{ accentColor: '#06b6d4' }} />
-            <button onClick={() => setVolPopup(false)} className="text-gray-500 hover:text-white text-xs">✕</button>
+          <div className="stage-volume-pop">
+            <div className="flex items-center justify-between mb-2 text-xs font-bold">
+              <span>Volume</span>
+              <span>{Math.round(volume * 100)}%</span>
+            </div>
+            <input type="range" min="0" max="100" value={volume * 100}
+              onChange={e => onVolume(Number(e.target.value) / 100)}
+              className="w-full h-1.5 rounded-full cursor-pointer"
+              style={{ accentColor: '#34d399' }} />
           </div>
         )}
       </div>
@@ -1186,236 +2020,291 @@ const PlaybackControls = ({ isPlaying, volume, onTogglePlay, onPrev, onNext, onV
   );
 };
 
-// ── Voice Waveform ──
-const VoiceWaveform = ({ isDjTalking }) => {
-  const [, setTick] = useState(0);
-  const phaseRef = useRef(0);
-
-  // Animate only when DJ is talking
-  useEffect(() => {
-    if (!isDjTalking) { phaseRef.current = 0; return; }
-    const t = setInterval(() => { phaseRef.current += 0.08; setTick(p => p + 1); }, 40);
-    return () => clearInterval(t);
-  }, [isDjTalking]);
+const RhythmDeck = ({ viz, isPlaying }) => {
+  const bars = Array.from({ length: 58 }, (_, i) => {
+    const height = 18 + Math.abs(Math.sin(i * 0.58) * Math.cos(i * 0.17)) * 72;
+    return { height, delay: (i % 9) * 0.08 };
+  });
 
   return (
-    <div className="relative h-20 bg-gradient-to-t from-purple-500/10 to-transparent border-t border-white/5 rounded-b-3xl">
-      <div className="absolute inset-0 flex flex-col justify-center gap-1.5 px-8">
-        {[0, 1, 2].map(wi => (
-          <div key={wi} className="flex items-center gap-0.5 h-4">
-            {Array.from({ length: 60 }).map((_, i) => {
-              const h = Math.sin(i * 0.15 + wi * 1.2 + phaseRef.current) * 0.5 + 0.5;
-              return (
-                <div key={i} className="flex-1 rounded-full transition-none"
-                  style={{
-                    height: isDjTalking ? `${h * 70 + 8}%` : '0%',
-                    opacity: isDjTalking ? 0.4 + h * 0.5 : 0,
-                    background: 'linear-gradient(90deg, #a855f7, #ec4899)',
-                  }} />
-              );
-            })}
-          </div>
+    <div className="rhythm-deck">
+      <canvas ref={viz.spectrumRef} width="640" height="220" className="rhythm-canvas" />
+      <div className="idle-bars" style={{ opacity: isPlaying ? 0.18 : 0.46 }}>
+        {bars.map((bar, i) => (
+          <span key={i} style={{ height: `${bar.height}%`, animationDelay: `${bar.delay}s` }} />
         ))}
       </div>
     </div>
   );
 };
 
-// ── DJ Speech Display ──
-const DJSpeechDisplay = ({ text, segue, reason, showReactions, onLike, onSkip }) => {
-  if (!text && !reason) return null;
-  const segueNames = { smooth: '平滑过渡', contrast: '风格反差', mood_match: '情绪匹配', surprise: '出人意料' };
-  const segueColors = { smooth: 'border-green-500/30 text-green-400 bg-green-500/10', contrast: 'border-orange-500/30 text-orange-400 bg-orange-500/10', mood_match: 'border-cyan-500/30 text-cyan-400 bg-cyan-500/10', surprise: 'border-purple-500/30 text-purple-400 bg-purple-500/10' };
+const MusicStage = ({ state, dispatch, audioActions, viz, isDjTalking }) => {
+  const song = state.currentSong || {};
+  const talking = isDjTalking || state.appState === 'speaking' || state.appState === 'chatting';
+  const activeLyric = state.lyricsLines[state.currentLyricIndex]?.text
+    || state.lyricsLines[state.currentLyricIndex + 1]?.text
+    || (state.isPlaying ? '节奏已经起来了，DJ 正在听这首歌的呼吸。' : '选一首歌，我们把灯光调暗一点。');
+  const cover = song.cover || song.cover_url || '';
+
   return (
-    <div className="flex flex-col items-center gap-2 mt-3 animate-[fadeInUp_0.3s_ease]">
-      {text && <p className="text-sm text-gray-300 text-center leading-relaxed">{text}</p>}
-      {segue && (
-        <span className={'px-2 py-0.5 rounded-full text-[10px] border ' + (segueColors[segue] || 'border-gray-500/30 text-gray-400')}>
-          {segueNames[segue] || segue}
-        </span>
-      )}
-      {reason && <p className="text-[11px] text-gray-500 italic">{reason}</p>}
-      {showReactions && (
-        <div className="flex gap-2 mt-1">
-          <button onClick={onLike} className="px-3 py-1 rounded-full bg-white/5 text-xs text-gray-400 hover:bg-green-500/10 hover:text-green-400 border border-white/5 transition-all">👍 喜欢</button>
-          <button onClick={onSkip} className="px-3 py-1 rounded-full bg-white/5 text-xs text-gray-400 hover:bg-red-500/10 hover:text-red-400 border border-white/5 transition-all">👎 跳过</button>
+    <section className="music-stage">
+      <div className="stage-topline">
+          <div className="station-lockup">
+          <div className="station-avatar">
+            {cover ? <img src={cover + (cover.includes('?') ? '' : '?param=80y80')} alt="" onError={e => e.currentTarget.style.display = 'none'} /> : 'DJ'}
+          </div>
+          <div className="min-w-0">
+            <div className="station-name">clauseekio</div>
+            <div className="station-status">
+              <span className={'status-dot ' + (talking ? 'talking' : '')}></span>
+              <span>{talking ? 'ON AIR' : state.isPlaying ? 'PLAYING' : 'READY'}</span>
+            </div>
+          </div>
         </div>
-      )}
+        <div className="stage-clock">{fmtTime(state.currentTime)} / {fmtTime(state.duration)}</div>
+      </div>
+
+      <div className="stage-body">
+        <div className="track-stack">
+          <div className="stage-eyebrow">Now Broadcasting</div>
+          <h1 className="track-title">{song.title || '等待一首歌'}</h1>
+          <div className="track-artist">{song.artist || 'DJ 正在整理下一段情绪'}</div>
+          <div className="lyric-pill">{activeLyric}</div>
+        </div>
+        <RhythmDeck viz={viz} isPlaying={state.isPlaying} />
+      </div>
+
+      <div className="stage-control-deck">
+        <StageProgress currentTime={state.currentTime} duration={state.duration}
+          waveformRef={viz.waveformRef} onSeek={audioActions.seekTo} />
+        <StageControls isPlaying={state.isPlaying} volume={state.volume}
+          onTogglePlay={audioActions.togglePlay}
+          onPrev={audioActions.prevTrack}
+          onNext={audioActions.nextTrack}
+          onVolume={v => dispatch({ type: 'SET_VOLUME', payload: v })} />
+      </div>
+    </section>
+  );
+};
+
+const RecommendationStrip = ({ cards, onPlay, onAdd }) => {
+  if (!cards || cards.length === 0) return null;
+  const display = cards.slice(-5);
+  const offset = cards.length - display.length;
+
+  return (
+    <div className="recommend-strip scrollbar-hide">
+      {display.map((card, i) => {
+        const originalIndex = offset + i;
+        return (
+          <div key={originalIndex + '-' + (card.title || '')} className="paper-rec-card">
+            {card.cover ? (
+              <img src={card.cover + (card.cover.includes('?') ? '' : '?param=80y80')} alt="" className="paper-rec-cover" onError={e => e.currentTarget.style.display = 'none'} />
+            ) : (
+              <div className="paper-rec-cover grid place-items-center text-[10px] font-black">DJ</div>
+            )}
+            <div className="min-w-0">
+              <div className="paper-rec-title">{card.title || '未知歌曲'}</div>
+              <div className="paper-rec-artist">{card.artist || card.reason || 'AI DJ 推荐'}</div>
+            </div>
+            <div className="paper-rec-actions">
+              <button onClick={() => onPlay(originalIndex)} title="播放">▶</button>
+              <button onClick={() => onAdd(originalIndex)} title="加入歌单">+</button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };
 
-// ── Chat Section ──
-const ChatSection = ({ state, dispatch, onSendChat, ttsStop }) => {
+const CompactCommandBar = ({ state, dispatch, onSendChat, onToggleVoiceMode }) => {
   const [input, setInput] = useState('');
-  const msgEndRef = useRef(null);
-
-  useEffect(() => { msgEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [state.chatHistory]);
+  const activities = [
+    { key: '', label: '随便听听' },
+    { key: 'studying', label: '学习' },
+    { key: 'working', label: '工作' },
+    { key: 'chilling', label: '放松' },
+    { key: 'working_out', label: '运动' },
+    { key: 'before_sleep', label: '睡前' },
+  ];
 
   const handleSend = () => {
-    const msg = input.trim(); if (!msg) return;
+    const msg = input.trim();
+    if (!msg) return;
     setInput('');
     dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'user', content: msg } });
     onSendChat(msg);
   };
 
-  const activities = [
-    { key: '', label: '随便听听', emoji: '🎵' },
-    { key: 'studying', label: '📚 学习', emoji: '' },
-    { key: 'working', label: '💼 工作', emoji: '' },
-    { key: 'chilling', label: '🛋️ 放松', emoji: '' },
-    { key: 'working_out', label: '🏃 运动', emoji: '' },
-    { key: 'before_sleep', label: '🌙 睡前', emoji: '' },
-  ];
-
   return (
-    <div className="flex-1 glass-light rounded-3xl overflow-hidden flex flex-col shadow-xl">
-      <div className="p-4 border-b border-white/5" style={{ background: 'linear-gradient(90deg, rgba(6,182,212,0.08), rgba(168,85,247,0.08))' }}>
-        <h3 className="text-white font-semibold text-sm flex items-center gap-2">
-          💬 DJ 互动聊天
-          <span className="text-[10px] px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded-full border border-red-500/30">Live</span>
-        </h3>
-      </div>
-      {/* Activity chips */}
-      <div className="flex gap-1.5 px-4 py-2 overflow-x-auto scrollbar-hide border-b border-white/5 flex-shrink-0">
+    <div className="compact-command">
+      <div className="activity-row scrollbar-hide">
         {activities.map(a => (
-          <button key={a.key} className={'act-chip ' + (state.userActivity === a.key ? 'active' : '')}
+          <button key={a.key} className={'script-chip ' + (state.userActivity === a.key ? 'active' : '')}
             onClick={() => {
-              const val = a.key;
-              dispatch({ type: 'SET_USER_ACTIVITY', payload: val });
-              localStorage.setItem('dj_activity', val);
-              api('/api/agent/user-activity', 'POST', { activity: val }).catch(() => {});
+              dispatch({ type: 'SET_USER_ACTIVITY', payload: a.key });
+              localStorage.setItem('dj_activity', a.key);
+              api('/api/agent/user-activity', 'POST', { activity: a.key }).catch(() => {});
             }}>
-            {a.emoji ? a.emoji + ' ' : ''}{a.label}
+            {a.label}
           </button>
         ))}
       </div>
-      <div className="flex-1 p-4 space-y-2 overflow-y-auto scrollbar-hide">
-        {state.chatHistory.map((msg, i) => (
-          <div key={i} className={'chat-msg ' + msg.role}>
-            <div className="chat-avatar">{msg.role === 'assistant' ? '🎧' : '👤'}</div>
-            <div className="chat-bubble">
-              {msg.role === 'assistant' && <span className="text-[10px] text-cyan-400 mr-1">clauseekio</span>}
-              {msg.content}
-            </div>
-          </div>
-        ))}
-        <div ref={msgEndRef} />
-      </div>
-      <div className="p-3 border-t border-white/5 bg-black/20">
-        <div className="flex gap-2">
-          <input type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()}
-            placeholder="说点什么..." className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50 text-sm" />
-          <button onClick={handleSend} className="p-2.5 rounded-xl hover:scale-105 transition-all text-white" style={{ background: 'linear-gradient(135deg, #06b6d4, #a855f7)', boxShadow: '0 0 20px rgba(6,182,212,0.3)' }}>
-            <SendIcon />
-          </button>
-        </div>
+      <div className="command-input-row">
+        <input type="text" value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSend()}
+          placeholder="跟 DJ 说一句，或者让他放一首歌..." />
+        <button className="voice-toggle" onClick={onToggleVoiceMode}>
+          {state.voiceMode === 'realtime' ? 'Realtime' : 'TTS'}
+        </button>
+        <button className="command-send" onClick={handleSend} aria-label="发送"><SendIcon /></button>
       </div>
     </div>
   );
 };
 
-// ── Recommendation Cards (shown only when DJ recommends) ──
-const RecommendationCards = ({ cards, onPlay, onAdd }) => {
-  if (!cards || cards.length === 0) return null;
+const ScriptPaper = ({ state, dispatch, scriptFeed, recCards, onSendChat, onToggleVoiceMode, onPlayRec, onAddRec, onReact }) => {
+  const paperRef = useRef(null);
+  const particleRefs = useRef([]);
+  const particles = useMemo(() => Array.from({ length: 54 }, (_, i) => {
+    const row = Math.floor(i / 9);
+    const col = i % 9;
+    return {
+      x: 7 + col * 10.8 + ((row % 2) * 3.2) + Math.sin(i * 1.7) * 1.8,
+      y: 9 + row * 13.6 + Math.cos(i * 1.3) * 2.4,
+      size: 1.8 + (i % 5) * 0.42,
+      opacity: 0.12 + (i % 7) * 0.018,
+    };
+  }), []);
+  const song = state.currentSong || {};
+  const fallback = song.title
+    ? `现在正在放 ${song.artist || '这位歌手'} 的《${song.title}》。我会把节奏接住，等下一段情绪出现。`
+    : 'DJ 正在调台。你可以说一句今天的状态，我来把第一首歌接上。';
+  const latestDjLine = (scriptFeed || []).find(item => item.role !== 'user' && item.kind !== 'user');
+  const primary = (state.speechText || '').trim() || latestDjLine?.content || fallback;
+  const primaryReason = state.reasonText || latestDjLine?.reason || '';
+  const history = (scriptFeed || []).filter(item => item.content && item.content !== primary).slice(0, 5);
+  const talking = state.isDjTalking || state.appState === 'speaking' || state.appState === 'chatting';
+  const handlePointerMove = (e) => {
+    const el = paperRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    el.style.setProperty('--sand-x', `${Math.max(0, Math.min(100, x))}%`);
+    el.style.setProperty('--sand-y', `${Math.max(0, Math.min(100, y))}%`);
+    particleRefs.current.forEach((node, i) => {
+      if (!node) return;
+      const p = particles[i];
+      const dist = Math.hypot(p.x - x, p.y - y);
+      const influence = Math.max(0, 1 - dist / 24);
+      const scale = 1 + influence * 3.8;
+      node.style.setProperty('--p-scale', scale.toFixed(2));
+      node.style.setProperty('--p-opacity', (p.opacity + influence * 0.58).toFixed(2));
+      node.style.setProperty('--p-blur', `${Math.max(0, 1.2 - influence * 1.1).toFixed(2)}px`);
+    });
+  };
+  const handlePointerLeave = () => {
+    const el = paperRef.current;
+    if (!el) return;
+    el.style.setProperty('--sand-x', '72%');
+    el.style.setProperty('--sand-y', '22%');
+    particleRefs.current.forEach((node, i) => {
+      if (!node) return;
+      const p = particles[i];
+      node.style.setProperty('--p-scale', '1');
+      node.style.setProperty('--p-opacity', String(p.opacity));
+      node.style.setProperty('--p-blur', '0px');
+    });
+  };
+
   return (
-    <div className="glass-light rounded-3xl p-4 shadow-xl">
-      <h3 className="text-white font-semibold text-sm mb-3 flex items-center gap-1.5">💡 DJ 推荐 <span className="text-gray-500 text-xs font-normal ml-auto">{cards.length} 首</span></h3>
-      <div className="space-y-2 max-h-[260px] overflow-y-auto scrollbar-hide">
-        {cards.map((card, i) => (
-          <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl bg-white/5 border border-white/5 hover:border-cyan-500/20 transition-all">
-            {card.cover ? (
-              <img src={card.cover + '?param=60y60'} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" onError={e => e.target.style.display = 'none'} />
-            ) : (
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center text-lg flex-shrink-0" style={{ background: 'linear-gradient(135deg, rgba(6,182,212,0.15), rgba(168,85,247,0.15))' }}>🎵</div>
-            )}
-            <div className="flex-1 min-w-0">
-              <h4 className="text-white text-xs font-medium truncate">{card.title || '未知歌曲'}</h4>
-              <p className="text-gray-400 text-[11px] truncate">{card.artist || ''}</p>
-              {card.reason && <p className="text-cyan-400 text-[10px] mt-0.5">{card.reason}</p>}
-            </div>
-            <button onClick={() => onPlay(i)} className="p-2 bg-cyan-500/10 hover:bg-cyan-500/20 rounded-lg text-cyan-400 text-xs transition-all">▶</button>
-            <button onClick={() => onAdd(i)} className="p-2 bg-purple-500/10 hover:bg-purple-500/20 rounded-lg text-purple-400 text-xs transition-all">+</button>
-          </div>
-        ))}
+    <section ref={paperRef} className="script-paper" onPointerMove={handlePointerMove} onPointerLeave={handlePointerLeave}>
+      <span className="sand-stream s1"></span>
+      <span className="sand-stream s2"></span>
+      <span className="sand-stream s3"></span>
+      {particles.map((p, i) => (
+        <span key={i}
+          ref={node => { particleRefs.current[i] = node; }}
+          className="sand-particle"
+          style={{
+            '--p-x': `${p.x}%`,
+            '--p-y': `${p.y}%`,
+            '--p-size': `${p.size}px`,
+            '--p-opacity': p.opacity,
+          }} />
+      ))}
+      <div className="script-header">
+        <div>
+          <div className="script-kicker">DJ Script</div>
+          <div className="script-title">说话和串词</div>
+        </div>
+        <div className="script-badge">{talking ? 'ON AIR' : 'Live Notes'}</div>
       </div>
-    </div>
+
+      <RecommendationStrip cards={recCards} onPlay={onPlayRec} onAdd={onAddRec} />
+
+      <div className="script-body scrollbar-hide">
+        <div className="script-current">
+          <div className="script-meta">
+            <strong>DJ</strong>
+            <span>•</span>
+            <span>{fmtTime(state.currentTime)}</span>
+          </div>
+          <div className="script-text">{primary}</div>
+          {primaryReason && <div className="script-reason">{primaryReason}</div>}
+          {state.showReactions && (
+            <div className="mt-3 flex gap-2">
+              <button className="script-chip" onClick={() => onReact('like')}>喜欢这首</button>
+              <button className="script-chip" onClick={() => onReact('skip')}>跳过</button>
+            </div>
+          )}
+        </div>
+
+        {history.length > 0 && (
+          <div className="script-history">
+            {history.map(item => (
+              <div key={item.id} className={'script-line ' + (item.role || item.kind || 'speech')}>
+                <div className="script-meta">
+                  <strong>{item.role === 'user' ? 'You' : item.kind === 'chat' ? 'DJ Reply' : 'Cue'}</strong>
+                  <span>•</span>
+                  <span>{item.time}</span>
+                </div>
+                <p>{item.content}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <CompactCommandBar state={state} dispatch={dispatch}
+        onSendChat={onSendChat}
+        onToggleVoiceMode={onToggleVoiceMode} />
+    </section>
   );
 };
 
-// ── Player Card (DJ View) ──
-const PlayerCard = ({ state, dispatch, audioActions, viz, isDjTalking, onTransition, onReact }) => {
-  const song = state.currentSong;
-
-  // Lyrics display
-  const lyricsRef = useRef(null);
-  useEffect(() => {
-    if (!lyricsRef.current) return;
-    const container = lyricsRef.current;
-    const active = container.querySelector('.lyric-active');
-    if (active) active.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, [state.currentLyricIndex]);
-
-  // Trigger transition
+const BroadcastShell = ({ state, dispatch, audioActions, viz, isDjTalking, onTransition, onReact, scriptFeed, recCards, onSendChat, onToggleVoiceMode, onPlayRec, onAddRec }) => {
   useEffect(() => {
     if (!state.transitionTriggered || state.currentMode !== 'dj') return;
     onTransition();
-  }, [state.transitionTriggered]);
+  }, [state.transitionTriggered, state.currentMode, onTransition]);
 
   return (
-    <div className="flex-1 flex flex-col">
-      <div className="flex-1 glass rounded-3xl overflow-hidden flex flex-col shadow-2xl">
-        {/* Music Visualizer — real FFT spectrum, animates only when playing */}
-        <div className="relative h-40 bg-gradient-to-b from-cyan-500/10 to-purple-500/5 border-b border-white/5">
-          <canvas ref={viz.spectrumRef} width="500" height="160" className="absolute inset-0 w-full h-full" />
-        </div>
-
-        <div className="flex-1 flex flex-col items-center justify-center px-8 py-4 overflow-hidden">
-          {/* Song info */}
-          <div className="text-center mb-4">
-            <h2 className="text-2xl font-bold text-white">{song?.title || '未选择歌曲'}</h2>
-            <p className="text-sm text-gray-400 mt-1">{song?.artist || ''}</p>
-          </div>
-
-          {/* Lyrics */}
-          <div ref={lyricsRef} className="relative flex-1 max-h-[130px] min-h-[80px] w-full overflow-y-auto scrollbar-hide mb-3 px-4">
-            {state.lyricsLines.length > 0 ? (
-              <div className="flex flex-col items-center">
-                {state.lyricsLines.map((line, i) => {
-                  const active = i === state.currentLyricIndex;
-                  return (
-                    <div key={i} className={'py-1.5 transition-all duration-500 ' + (active ? 'lyric-active' : '')}
-                      style={{ opacity: active ? 1 : Math.max(0.15, 1 - Math.abs(i - state.currentLyricIndex) * 0.3), transform: `scale(${active ? 1.05 : 0.95})` }}>
-                      <p className={'transition-all ' + (active ? 'text-white text-base font-medium' : 'text-gray-500 text-sm')}
-                        style={{ textShadow: active ? '0 0 15px rgba(6,182,212,0.5)' : 'none' }}>
-                        {line.text}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-full">
-                <p className="text-gray-600 text-sm">暂无歌词</p>
-              </div>
-            )}
-          </div>
-
-          {/* Progress */}
-          <ProgressBar currentTime={state.currentTime} duration={state.duration} onSeek={audioActions.seekTo} />
-
-          {/* Controls */}
-          <PlaybackControls isPlaying={state.isPlaying} volume={state.volume}
-            onTogglePlay={audioActions.togglePlay} onPrev={audioActions.prevTrack} onNext={audioActions.nextTrack}
-            onVolume={v => dispatch({ type: 'SET_VOLUME', payload: v })} />
-
-          {/* Speech */}
-          <DJSpeechDisplay text={state.speechText} segue={state.segueType} reason={state.reasonText}
-            showReactions={state.showReactions} onLike={() => onReact('like')} onSkip={() => onReact('skip')} />
-        </div>
-
-        {/* Voice wave */}
-        <VoiceWaveform isDjTalking={isDjTalking || state.appState === 'speaking'} />
+    <div className="broadcast-frame">
+      <div className="broadcast-shell">
+        <MusicStage state={state} dispatch={dispatch} audioActions={audioActions}
+          viz={viz} isDjTalking={isDjTalking} />
+        <ScriptPaper state={state} dispatch={dispatch}
+          scriptFeed={scriptFeed}
+          recCards={recCards}
+          onSendChat={onSendChat}
+          onToggleVoiceMode={onToggleVoiceMode}
+          onPlayRec={onPlayRec}
+          onAddRec={onAddRec}
+          onReact={onReact} />
       </div>
     </div>
   );
@@ -1659,8 +2548,11 @@ function App() {
   const [modal, setModal] = useState({ import: false, search: false, playlist: false, likes: false });
   const [searchInitKw, setSearchInitKw] = useState('');
   const [recCards, setRecCards] = useState([]);
+  const [djScriptFeed, setDjScriptFeed] = useState([]);
   const transitionTokenRef = useRef(0);
   const transitionTimerRef = useRef(null);
+  const executeActionsRef = useRef(null);
+  const playDirectSongRef = useRef(null);
   const chatVoiceRef = useRef({
     sessionId: 0,
     queue: [],
@@ -1778,51 +2670,107 @@ function App() {
 
   const uiAudioActions = useMemo(() => ({
     ...audioActions,
-    loadSong: (idx) => { cancelTransitionFallback(); audioActions.loadSong(idx); },
-    nextTrack: () => { cancelTransitionFallback(); audioActions.nextTrack(); },
-    prevTrack: () => { cancelTransitionFallback(); audioActions.prevTrack(); },
+    loadSong: (idx) => {
+      cancelTransitionFallback();
+      dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
+      dispatch({ type: 'SET_PENDING_SONG', payload: null });
+      dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+      audioActions.loadSong(idx);
+    },
+    nextTrack: () => {
+      cancelTransitionFallback();
+      dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
+      dispatch({ type: 'SET_PENDING_SONG', payload: null });
+      dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+      audioActions.nextTrack();
+    },
+    prevTrack: () => {
+      cancelTransitionFallback();
+      dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
+      dispatch({ type: 'SET_PENDING_SONG', payload: null });
+      dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+      audioActions.prevTrack();
+    },
   }), [audioActions, cancelTransitionFallback]);
+
+  const loadMaterializedSong = useCallback((song, idx = -1) => {
+    if (!song) return;
+    dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
+    dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
+    dispatch({ type: 'SET_CURRENT_SONG', payload: song });
+    dispatch({ type: 'SET_CURRENT_INDEX', payload: idx });
+    dispatch({ type: 'SET_DIRECT_PLAY', payload: { direct: false, song: null } });
+    const audio = audioRef.current;
+    if (!audio) return;
+    if ((song.source === 'netease' || song.source === 'netease_discovery') && song.netease_id) {
+      audio.src = `/api/audio?source=netease&netease_id=${song.netease_id}&proxy=1`;
+    } else {
+      audio.src = `/api/audio?path=${encodeURIComponent(song.path || '')}`;
+    }
+    audio.load();
+    if (idx >= 0) {
+      api('/api/playlist/current', 'POST', { index: idx }).catch(() => {});
+      api('/api/stats/song-play', 'POST', { song_index: idx }).catch(() => {});
+    }
+  }, []);
 
   const loadPendingSong = useCallback(() => {
     cancelTransitionFallback();
-    if (state.pendingNext) {
+    const latest = stateRef.current;
+    const song = latest.pendingSong;
+    const songs = latest.playlist?.songs || [];
+
+    if (song) {
       dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+      dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
+      dispatch({ type: 'SET_PENDING_SONG', payload: null });
+      dispatch({ type: 'CLEAR_SPEECH' });
+      let idx = song.playlist_index ?? -1;
+      if (idx < 0 || idx >= songs.length) idx = -1;
+      if (idx < 0 && song.netease_id) idx = songs.findIndex(s => String(s.netease_id) === String(song.netease_id));
+      if (idx < 0) idx = songs.findIndex(s => s.title === song.title && s.artist === song.artist);
+      if (idx >= 0) {
+        audioActions.loadSong(idx);
+        setTimeout(() => audioActions.play(), 200);
+      } else if (song.netease_id) {
+        const ns = {
+          title: song.title,
+          artist: song.artist,
+          netease_id: song.netease_id,
+          source: song.source || 'netease',
+          cover: song.cover_url || song.album_pic || '',
+          album: song.album_name || '',
+          cover_url: song.cover_url || song.album_pic || '',
+          tags: [],
+          path: song.path || '',
+        };
+        const newSongs = [...songs, ns];
+        dispatch({ type: 'SET_PLAYLIST', payload: { songs: newSongs, current_index: latest.playlist?.current_index ?? -1 } });
+        idx = newSongs.length - 1;
+        loadMaterializedSong(ns, idx);
+        api('/api/playlist/add', 'POST', { song: ns }).catch(() => {});
+        api('/api/playlist/current', 'POST', { index: idx }).catch(() => {});
+        setTimeout(() => audioActions.play(), 300);
+      } else {
+        audioActions.nextTrack();
+      }
+      return;
+    }
+
+    if (latest.pendingNext || latest.pendingTransition) {
+      dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+      dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
       dispatch({ type: 'SET_PENDING_SONG', payload: null });
       dispatch({ type: 'CLEAR_SPEECH' });
       dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
       audioActions.nextTrack();
       return;
     }
-    const song = state.pendingSong;
-    if (!song) {
-      dispatch({ type: 'SET_PENDING_NEXT', payload: false });
-      dispatch({ type: 'CLEAR_SPEECH' });
-      return;
-    }
     dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+    dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
     dispatch({ type: 'SET_PENDING_SONG', payload: null });
     dispatch({ type: 'CLEAR_SPEECH' });
-    let idx = song.playlist_index ?? -1;
-    const songs = state.playlist.songs;
-    if (idx < 0 || idx >= songs.length) idx = -1;
-    if (idx < 0 && song.netease_id) idx = songs.findIndex(s => String(s.netease_id) === String(song.netease_id));
-    if (idx < 0) idx = songs.findIndex(s => s.title === song.title && s.artist === song.artist);
-    if (idx >= 0) {
-      audioActions.loadSong(idx);
-      setTimeout(() => audioActions.play(), 200);
-    } else if (song.netease_id) {
-      const ns = { title: song.title, artist: song.artist, netease_id: song.netease_id, source: 'netease', cover: song.cover_url || '', album: song.album_name || '', cover_url: song.cover_url || '', tags: [], path: '' };
-      const newSongs = [...state.playlist.songs, ns];
-      dispatch({ type: 'SET_PLAYLIST', payload: { songs: newSongs, current_index: state.playlist.current_index } });
-      idx = newSongs.length - 1;
-      audioActions.loadSong(idx);
-      api('/api/playlist/add', 'POST', { song: ns }).catch(() => {});
-      api('/api/playlist/current', 'POST', { index: idx }).catch(() => {});
-      setTimeout(() => audioActions.play(), 300);
-    } else {
-      audioActions.nextTrack();
-    }
-  }, [state.pendingSong, state.playlist.songs, state.pendingNext, audioActions, cancelTransitionFallback]);
+  }, [audioActions, cancelTransitionFallback, loadMaterializedSong]);
 
   const handleTtsEnd = useCallback(() => {
     cancelTransitionFallback();
@@ -1837,6 +2785,153 @@ function App() {
   useInterjections(state, dispatch, tts.speak);
   useStatsTicker(state.isPlaying, state.playlist);
   useWeather(dispatch);
+
+  useEffect(() => {
+    if (state.appState !== 'idle' || state.isDjTalking) return;
+    if (state.pendingSong) {
+      const id = setTimeout(() => loadPendingSong(), 80);
+      return () => clearTimeout(id);
+    }
+    if (state.pendingNext) {
+      if (state.currentMode === 'dj') {
+        dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+        dispatch({ type: 'SET_PENDING_TRANSITION', payload: true });
+      } else {
+        const id = setTimeout(() => loadPendingSong(), 80);
+        return () => clearTimeout(id);
+      }
+    }
+    if (state.pendingTransition && state.currentMode === 'dj') {
+      dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
+      dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: true });
+    }
+  }, [state.appState, state.isDjTalking, state.pendingSong, state.pendingNext, state.pendingTransition, state.currentMode, loadPendingSong]);
+
+  useEffect(() => {
+    const text = (state.speechText || '').trim();
+    if (!text) return;
+    setDjScriptFeed(prev => {
+      if (prev[0]?.content === text) {
+        return [{ ...prev[0], reason: state.reasonText || prev[0].reason || '' }, ...prev.slice(1)];
+      }
+      return [{
+        id: 'speech-' + Date.now(),
+        kind: 'speech',
+        content: text,
+        reason: state.reasonText || '',
+        time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      }, ...prev].slice(0, 10);
+    });
+  }, [state.speechText, state.reasonText]);
+
+  useEffect(() => {
+    const lastMessage = [...(state.chatHistory || [])].reverse().find(m => (m.content || '').trim());
+    if (!lastMessage) return;
+    const text = lastMessage.content.trim();
+    setDjScriptFeed(prev => {
+      if (prev.some(item => item.content === text && item.role === lastMessage.role)) return prev;
+      return [{
+        id: 'chat-' + lastMessage.role + '-' + Date.now(),
+        kind: lastMessage.role === 'user' ? 'user' : 'chat',
+        role: lastMessage.role,
+        content: text,
+        reason: '',
+        time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      }, ...prev].slice(0, 10);
+    });
+  }, [state.chatHistory]);
+
+  const chooseStartupIndex = useCallback((playlistData) => {
+    const songs = playlistData?.songs || [];
+    if (!songs.length) return -1;
+    const savedIndex = Number(playlistData.current_index);
+    if (Number.isInteger(savedIndex) && savedIndex > 0 && savedIndex < songs.length) return savedIndex;
+    if (songs.length === 1) return 0;
+    let idx = Math.floor(Math.random() * songs.length);
+    if (idx === 0) idx = 1 + Math.floor(Math.random() * (songs.length - 1));
+    return idx;
+  }, []);
+
+  const runOpeningShow = useCallback(async (playlistData, startupIndex) => {
+    const songs = playlistData?.songs || [];
+    const anchor = songs[startupIndex] || songs[0] || null;
+    if (!anchor) {
+      const say = '嘿，欢迎回来。先导入一点歌，我就能开始给你开台。';
+      dispatch({ type: 'SET_APP_STATE', payload: 'speaking' });
+      dispatch({ type: 'SET_SPEECH', payload: { text: say, segue: null, reason: '等待歌单后开始推荐', showReactions: false } });
+      dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: say } });
+      tts.speak(say, 'chill');
+      return;
+    }
+
+    cancelTransitionFallback();
+    const openingToken = transitionTokenRef.current;
+    dispatch({ type: 'SET_CURRENT_SONG', payload: anchor });
+    dispatch({ type: 'SET_CURRENT_INDEX', payload: startupIndex >= 0 ? startupIndex : 0 });
+    dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
+    dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+    dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
+
+    const fallbackSong = { ...anchor, playlist_index: startupIndex >= 0 ? startupIndex : 0 };
+    const fallbackSay = `嘿，欢迎回来。我先从 ${anchor.artist || '这位歌手'} 的《${anchor.title || '这首歌'}》开场，然后慢慢往外探一点新东西。`;
+    try {
+      const chatContext = [
+        '开台：用户刚打开私人电台。',
+        '请先自然打招呼，再发散推荐一首开场歌。',
+        '不要只从用户喜欢/红心/常听歌手里选；优先考虑网易云实时发现、不同语种、不同风格，但仍要适合当前氛围。',
+        '串词里要让用户感觉你是在聊天，不是机械播报。',
+      ].join('\n');
+      const r = await api('/api/agent/transition', 'POST', {
+        current_song: anchor,
+        weather: {
+          description: stateRef.current.weather?.description || '',
+          icon: stateRef.current.weather?.iconCode || '',
+          temp: stateRef.current.weather?.temp,
+        },
+        history: stateRef.current.recentTransitions || [],
+        user_activity: stateRef.current.userActivity || '',
+        chat_context: chatContext,
+      });
+      const selected = r?.selected_song && r.action === 'play_selected'
+        ? r.selected_song
+        : fallbackSong;
+      const say = (r?.say || fallbackSay).replace(/\[em:[^\]]*\]/g, '');
+      const reason = r?.reason || '开台推荐：先打招呼，再给你推一首不只来自喜欢列表的歌。';
+      dispatch({ type: 'SET_PENDING_SONG', payload: selected });
+      dispatch({ type: 'SET_APP_STATE', payload: 'speaking' });
+      dispatch({ type: 'SET_MOOD', payload: r?.mood || 'chill' });
+      dispatch({ type: 'SET_SPEECH', payload: { text: say, segue: r?.segue || null, reason, showReactions: true } });
+      dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: say } });
+      const openingCard = {
+        title: selected.title || anchor.title || '开场歌',
+        artist: selected.artist || anchor.artist || '',
+        netease_id: selected.netease_id || '',
+        cover: selected.cover_url || selected.album_pic || selected.cover || anchor.cover || anchor.cover_url || '',
+        reason: '开台推荐',
+      };
+      setRecCards(prev => [...prev, openingCard].slice(-8));
+      tts.speak(r?.say || say, r?.mood || 'chill');
+      scheduleTransitionFallback(openingToken, (say.length || 16) * 350 + 9000, () => {
+        if (!stateRef.current.pendingSong) return;
+        dispatch({ type: 'SET_DJ_TALKING', payload: false });
+        dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
+        loadPendingSong();
+      });
+    } catch (e) {
+      dispatch({ type: 'SET_PENDING_SONG', payload: fallbackSong });
+      dispatch({ type: 'SET_APP_STATE', payload: 'speaking' });
+      dispatch({ type: 'SET_MOOD', payload: 'chill' });
+      dispatch({ type: 'SET_SPEECH', payload: { text: fallbackSay, segue: null, reason: '开台兜底推荐', showReactions: false } });
+      dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: fallbackSay } });
+      tts.speak(fallbackSay, 'chill');
+      scheduleTransitionFallback(openingToken, (fallbackSay.length || 16) * 350 + 9000, () => {
+        if (!stateRef.current.pendingSong) return;
+        dispatch({ type: 'SET_DJ_TALKING', payload: false });
+        dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
+        loadPendingSong();
+      });
+    }
+  }, [tts, cancelTransitionFallback, scheduleTransitionFallback, loadPendingSong]);
 
   useEffect(() => {
     (async () => {
@@ -1856,22 +2951,8 @@ function App() {
       setTimeout(async () => {
         if (mode !== 'dj') return;
         const pl = await api('/api/playlist').catch(() => ({ songs: [], current_index: -1 }));
-        if (pl.songs && pl.songs.length > 0 && pl.current_index >= 0) {
-          const actions = audioActionsRef.current;
-          if (actions) { actions.loadSong(pl.current_index); setTimeout(() => actions.play(), 300); }
-        }
-        setTimeout(async () => {
-          try {
-            const greet = await api('/api/agent/greet', 'POST', { weather: {} });
-            if (greet && greet.say) {
-              dispatch({ type: 'SET_APP_STATE', payload: 'speaking' });
-              dispatch({ type: 'SET_MOOD', payload: greet.mood || 'chill' });
-              const gText = (greet.say || '').replace(/\[em:[^\]]*\]/g, '');
-              dispatch({ type: 'SET_SPEECH', payload: { text: gText, segue: null, reason: '', showReactions: false } });
-              tts.speak(greet.say, greet.mood || 'chill');
-            }
-          } catch (e) {}
-        }, 800);
+        const startupIndex = chooseStartupIndex(pl);
+        await runOpeningShow(pl, startupIndex);
       }, 800);
     })();
   }, []);
@@ -1901,19 +2982,32 @@ function App() {
 // Transition
 const doTransition = useCallback(async () => {
   cancelTransitionFallback();
-  const transitionToken = transitionTokenRef.current;
-  dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
-  dispatch({ type: 'SET_PENDING_NEXT', payload: false });
-  dispatch({ type: 'SET_PENDING_SONG', payload: null });
-  if (state.appState !== 'idle' || state.isDjTalking) return;
+  if (state.appState !== 'idle' || state.isDjTalking) {
+    dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
+    dispatch({ type: 'SET_PENDING_TRANSITION', payload: true });
+    return;
+  }
   const songs = state.playlist.songs;
   const cur = state.playlist.current_index;
+  const safeCur = cur >= 0 && cur < songs.length
+    ? cur
+    : Math.max(0, songs.findIndex(s => {
+      const curSong = state.currentSong || {};
+      return (curSong.netease_id && String(s.netease_id) === String(curSong.netease_id))
+        || (s.title === curSong.title && s.artist === curSong.artist);
+    }));
+  const currentForTransition = state.currentSong || songs[safeCur] || {};
+  const transitionToken = transitionTokenRef.current;
+  dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
+  dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
+  dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+  dispatch({ type: 'SET_PENDING_SONG', payload: null });
   if (songs.length < 2 || state.currentMode === 'normal') { dispatch({ type: 'SET_APP_STATE', payload: 'idle' }); return; }
   dispatch({ type: 'SET_APP_STATE', payload: 'speaking' });
   try {
     const chatCtx = (state.chatHistory || []).slice(-4).map(m => `${m.role === 'user' ? '用户' : 'DJ'}：${m.content}`).join('\n');
     const r = await api('/api/agent/transition', 'POST', {
-      current_song: songs[cur] || {},
+      current_song: currentForTransition,
       weather: {
         description: state.weather.description || '',
         icon: state.weather.iconCode || '',
@@ -1932,11 +3026,17 @@ const doTransition = useCallback(async () => {
       if (r.selected_song && r.action === 'play_selected') dispatch({ type: 'SET_PENDING_SONG', payload: r.selected_song });
       tts.speak(r.say, r.mood);
       const timeoutMs = (r.say?.length || 10) * 350 + 8000;
-      const fallbackIdx = (cur + 1) % songs.length;
+      const fallbackIdx = (safeCur + 1) % songs.length;
       scheduleTransitionFallback(transitionToken, timeoutMs, () => {
-        if (stateRef.current.pendingSong || stateRef.current.pendingNext) return;
+        if (stateRef.current.pendingSong || stateRef.current.pendingNext || stateRef.current.pendingTransition) {
+          dispatch({ type: 'SET_DJ_TALKING', payload: false });
+          dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
+          loadPendingSong();
+          return;
+        }
         dispatch({ type: 'SET_PENDING_SONG', payload: null });
         dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+        dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
         dispatch({ type: 'SET_DJ_TALKING', payload: false });
         dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
         dispatch({ type: 'CLEAR_SPEECH' });
@@ -1948,10 +3048,11 @@ const doTransition = useCallback(async () => {
       });
     } else {
       dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
+      dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
       audioActions.nextTrack();
     }
   } catch (e) {
-    const ns = songs[(cur + 1) % songs.length] || {};
+    const ns = songs[(safeCur + 1) % songs.length] || {};
     const fallbacks = [
       '这首歌的情绪刚刚好，我们顺着感觉继续。',
       '我先把节奏接稳，下一首会更顺。',
@@ -1964,6 +3065,7 @@ const doTransition = useCallback(async () => {
     scheduleTransitionFallback(transitionToken, 6000, () => {
       dispatch({ type: 'SET_PENDING_SONG', payload: null });
       dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+      dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
       dispatch({ type: 'SET_DJ_TALKING', payload: false });
       dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
       dispatch({ type: 'CLEAR_SPEECH' });
@@ -1971,7 +3073,7 @@ const doTransition = useCallback(async () => {
       audioActions.nextTrack();
     });
   }
-}, [state.playlist, state.currentMode, state.chatHistory, state.recentTransitions, state.userActivity, state.weather, state.appState, state.isDjTalking, tts, cancelTransitionFallback, scheduleTransitionFallback]);
+}, [state.playlist, state.currentSong, state.currentMode, state.chatHistory, state.recentTransitions, state.userActivity, state.weather, state.appState, state.isDjTalking, tts, audioActions, cancelTransitionFallback, scheduleTransitionFallback, loadPendingSong]);
 
 // Chat (with voice TTS)
 const sendChat = useCallback(async (msg) => {
@@ -1992,7 +3094,7 @@ const sendChat = useCallback(async (msg) => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: msg,
-        history: state.chatHistory || [],
+        history: [...(state.chatHistory || []), { role: 'user', content: msg }],
         voice_mode: state.voiceMode || 'realtime',
         current_song: { title: curSong.title || '', artist: curSong.artist || '' }
       })
@@ -2044,7 +3146,7 @@ const sendChat = useCallback(async (msg) => {
     dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: cleanText } });
     await waitForChatVoiceDrain(sessionId);
     if (chatVoiceRef.current.sessionId !== sessionId) return;
-    if (actions.length > 0) await executeActions(actions);
+    if (actions.length > 0 && executeActionsRef.current) await executeActionsRef.current(actions);
   } catch (e) {
     if (chatVoiceRef.current.sessionId === sessionId) {
       dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: '刚刚语音回复有点卡，我先用文字接上。' } });
@@ -2055,7 +3157,7 @@ const sendChat = useCallback(async (msg) => {
       dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
     }
   }
-}, [state.chatHistory, state.currentSong, state.voiceMode, executeActions, stopChatVoice, tts.stop, enqueueChatVoiceChunk, waitForChatVoiceDrain, markChatVoiceStreamDone]);
+}, [state.chatHistory, state.currentSong, state.voiceMode, stopChatVoice, tts.stop, enqueueChatVoiceChunk, waitForChatVoiceDrain, markChatVoiceStreamDone]);
 
 // Execute Chat Actions
 const executeActions = useCallback(async (actions) => {
@@ -2066,6 +3168,7 @@ const executeActions = useCallback(async (actions) => {
         tts.stop();
         dispatch({ type: 'CLEAR_SPEECH' });
         dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
+        dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
         dispatch({ type: 'SET_PENDING_SONG', payload: null });
         dispatch({ type: 'SET_PENDING_NEXT', payload: false });
         audioActions.nextTrack();
@@ -2075,19 +3178,24 @@ const executeActions = useCallback(async (actions) => {
         setModal(m => ({ ...m, search: true }));
         break;
       case 'play': {
-        const parts = act.arg.split('—');
-        const pTitle = (parts[0] || '').trim();
-        const pArtist = (parts[1] || '').trim();
+        const { title: pTitle, artist: pArtist } = splitTrackArg(act.arg);
         let selectedSong = null;
+        let bestIdx = -1;
+        let bestScore = 0;
         for (let i = 0; i < state.playlist.songs.length; i++) {
           const s = state.playlist.songs[i];
-          if ((pTitle && s.title && s.title.includes(pTitle)) || (pArtist && s.artist && s.artist.includes(pArtist))) {
-            cancelTransitionFallback();
-            audioActions.loadSong(i);
-            audioActions.play();
-            selectedSong = { title: s.title || '', artist: s.artist || '' };
-            break;
+          const score = trackMatchScore(s, pTitle, pArtist);
+          if (score > bestScore) {
+            bestIdx = i;
+            bestScore = score;
           }
+        }
+        if (bestIdx >= 0 && bestScore > 0) {
+          const s = state.playlist.songs[bestIdx];
+          cancelTransitionFallback();
+          audioActions.loadSong(bestIdx);
+          audioActions.play();
+          selectedSong = { title: s.title || '', artist: s.artist || '' };
         }
         if (!selectedSong) {
           try {
@@ -2106,7 +3214,7 @@ const executeActions = useCallback(async (actions) => {
                 tags: [],
                 path: ''
               };
-              playDirectSong(ns);
+              playDirectSongRef.current?.(ns);
               selectedSong = ns;
             }
           } catch (e) {}
@@ -2154,22 +3262,29 @@ const executeActions = useCallback(async (actions) => {
     }
   }
 }, [state.playlist.songs, tts, audioActions, cancelTransitionFallback]);
+executeActionsRef.current = executeActions;
   // Direct play
   const playDirectSong = useCallback((song) => {
     cancelTransitionFallback();
     dispatch({ type: 'SET_PENDING_SONG', payload: null });
     dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+    dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
     dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
     dispatch({ type: 'SET_DIRECT_PLAY', payload: { direct: true, song } });
+    dispatch({ type: 'SET_CURRENT_SONG', payload: song });
+    dispatch({ type: 'SET_CURRENT_INDEX', payload: state.playlist.current_index });
     const audio = audioRef.current;
     if (audio) {
-      if (song.source === 'netease' && song.netease_id) {
+      if ((song.source === 'netease' || song.source === 'netease_discovery') && song.netease_id) {
         audio.src = `/api/audio?source=netease&netease_id=${song.netease_id}&proxy=1`;
+      } else {
+        audio.src = `/api/audio?path=${encodeURIComponent(song.path || '')}`;
       }
       audio.load();
       audioActions.play();
     }
-  }, [audioActions, cancelTransitionFallback]);
+  }, [audioActions, cancelTransitionFallback, state.playlist.current_index]);
+  playDirectSongRef.current = playDirectSong;
   // Refresh playlist
   const refreshPlaylist = useCallback(async () => {
     try { const pl = await api('/api/playlist'); dispatch({ type: 'SET_PLAYLIST', payload: pl }); } catch (e) {}
@@ -2188,6 +3303,9 @@ const executeActions = useCallback(async (actions) => {
       cancelTransitionFallback();
       stopChatVoice();
       tts.stop();
+      dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
+      dispatch({ type: 'SET_PENDING_SONG', payload: null });
+      dispatch({ type: 'SET_PENDING_NEXT', payload: false });
     }
   }, [state.playlist.current_index, tts, cancelTransitionFallback, stopChatVoice]);
   // Mode toggle
@@ -2195,8 +3313,10 @@ const executeActions = useCallback(async (actions) => {
     cancelTransitionFallback();
     stopChatVoice();
     tts.stop();
+    dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
     dispatch({ type: 'SET_PENDING_SONG', payload: null });
     dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+    dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
     dispatch({ type: 'CLEAR_SPEECH' });
     dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
     const newMode = state.currentMode === 'dj' ? 'normal' : 'dj';
@@ -2209,11 +3329,6 @@ const executeActions = useCallback(async (actions) => {
     dispatch({ type: 'SET_VOICE_MODE', payload: nextMode });
     localStorage.setItem('dj_voice_mode', nextMode);
   }, [state.voiceMode]);
-  // View toggle
-  const toggleView = useCallback(() => {
-    const newView = state.currentView === 'claudio' ? 'dj' : 'claudio';
-    dispatch({ type: 'SET_VIEW', payload: newView });
-  }, [state.currentView]);
   // Keyboard
   const kbActions = useMemo(() => ({
     togglePlay: uiAudioActions.togglePlay,
@@ -2226,65 +3341,74 @@ const executeActions = useCallback(async (actions) => {
   }), [uiAudioActions]);
   useKeyboardShortcuts(kbActions);
 
+  const playRecommendation = useCallback(async (i) => {
+    const card = recCards[i];
+    if (!card) return;
+    try {
+      const sr = await api('/api/netease/search', 'POST', { keywords: (card.title || '') + ' ' + (card.artist || ''), limit: 1 });
+      const songs = sr?.result?.songs || [];
+      if (songs.length > 0) {
+        const s = songs[0];
+        playDirectSong({
+          title: s.name,
+          artist: (s.artists || s.ar || []).map(a => a.name).join(' / '),
+          netease_id: String(s.id),
+          source: 'netease',
+          cover: s.al?.picUrl || '',
+          cover_url: s.al?.picUrl || '',
+          tags: [],
+          path: ''
+        });
+      }
+    } catch (e) {}
+  }, [recCards, playDirectSong]);
+
+  const addRecommendation = useCallback(async (i) => {
+    const card = recCards[i];
+    if (!card) return;
+    try {
+      await api('/api/playlist/add', 'POST', {
+        song: {
+          source: 'netease',
+          netease_id: card.netease_id || '',
+          path: '',
+          title: card.title || '',
+          artist: card.artist || '',
+          album: '',
+          duration: 0,
+          tags: [],
+          cover: card.cover || ''
+        }
+      });
+      await refreshPlaylist();
+    } catch (e) {}
+  }, [recCards, refreshPlaylist]);
+
   return (
     <div className="app-shell relative w-full h-screen overflow-hidden">
       <BackgroundEffects />
       <div className="dj-grid-overlay absolute inset-0 pointer-events-none z-[1]"></div>
 
-      <TopNav state={state} dispatch={dispatch} onToggleMode={toggleMode} onToggleView={toggleView}
+      <TopNav state={state} onToggleMode={toggleMode}
         onTogglePlaylist={() => setPlaylistOpen(o => !o)} playlistOpen={playlistOpen}
         onSearch={() => setModal(m => ({ ...m, search: true }))} />
 
       {/* DJ View */}
-      <div className="fixed top-16 left-0 right-0 bottom-0 z-10 p-2 lg:p-4" style={{ display: state.currentView === 'dj' ? 'block' : 'none' }}>
-        <div className="w-full h-full max-w-[1180px] mx-auto flex flex-col gap-3 lg:gap-4">
-          <div className="flex-[0.92] min-h-[340px]">
-            <PlayerCard state={state} dispatch={dispatch} audioActions={uiAudioActions} viz={viz}
-              isDjTalking={state.isDjTalking} onTransition={doTransition} onReact={handleReaction} />
-          </div>
-          <div className="flex-[1.08] min-h-0 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-3 lg:gap-4">
-            <ChatSection
-              state={state}
-              dispatch={dispatch}
-              onSendChat={sendChat}
-              ttsStop={tts.stop}
-              voiceMode={state.voiceMode}
-              onToggleVoiceMode={toggleVoiceMode}
-            />
-            <RecommendationCards cards={recCards}
-              onPlay={async (i) => {
-                const card = recCards[i];
-                try {
-                  const sr = await api('/api/netease/search', 'POST', { keywords: (card.title || '') + ' ' + (card.artist || ''), limit: 1 });
-                  const songs = sr?.result?.songs || [];
-                  if (songs.length > 0) {
-                    const s = songs[0];
-                    playDirectSong({ title: s.name, artist: (s.artists || s.ar || []).map(a => a.name).join(' / '), netease_id: String(s.id), source: 'netease', cover: s.al?.picUrl || '', tags: [], path: '' });
-                  }
-                } catch (e) {}
-              }}
-              onAdd={async (i) => {
-                const card = recCards[i];
-                try {
-                  await api('/api/playlist/add', 'POST', { song: { source: 'netease', netease_id: card.netease_id || '', path: '', title: card.title || '', artist: card.artist || '', album: '', duration: 0, tags: [], cover: card.cover || '' } });
-                  await refreshPlaylist();
-                } catch (e) {}
-              }} />
-          </div>
-        </div>
+      <div className="dj-broadcast-view">
+        <BroadcastShell state={state}
+          dispatch={dispatch}
+          audioActions={uiAudioActions}
+          viz={viz}
+          isDjTalking={state.isDjTalking}
+          onTransition={doTransition}
+          onReact={handleReaction}
+          scriptFeed={djScriptFeed}
+          recCards={recCards}
+          onSendChat={sendChat}
+          onToggleVoiceMode={toggleVoiceMode}
+          onPlayRec={playRecommendation}
+          onAddRec={addRecommendation} />
       </div>
-
-            {/* Claudio View (placeholder) */}
-      <div className="fixed top-16 left-0 right-0 bottom-0 z-10 p-4" style={{ display: state.currentView === 'claudio' ? 'flex' : 'none' }}>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="glass rounded-[28px] p-12 text-center max-w-[680px]">
-            <h2 className="text-2xl text-emerald-50 mb-2">Claudio 视图</h2>
-            <p className="text-emerald-100/65">这个视图还在打磨中，后面可以放角色卡片、历史记录或者更多控制面板。</p>
-            <button className="btn btn-grad mt-5" onClick={toggleView}>切回 DJ 视图</button>
-          </div>
-        </div>
-      </div>
-
       {/* Playlist Slide */}
       <PlaylistSlide open={playlistOpen} songs={state.playlist.songs} currentIndex={state.playlist.current_index}
         onPlay={i => { uiAudioActions.loadSong(i); uiAudioActions.play(); }}

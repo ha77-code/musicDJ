@@ -52,7 +52,7 @@ class MusicDiscovery:
         queries = self._generate_queries(taste_profile, context)
         all_songs = []
 
-        for query in queries[:3]:  # max 3 queries to stay fast
+        for query in queries[:7]:  # broader radio-style discovery without making startup too slow
             songs = self._search_cached(query, limit=8)
             all_songs.extend(songs)
 
@@ -100,16 +100,46 @@ class MusicDiscovery:
     def _generate_queries(self, taste: dict, context: dict) -> list[str]:
         """Build search queries from taste profile + situational context.
 
-        Queries are ranked: artist-based first (highest signal), then genre+mood.
+        Queries intentionally start with exploratory/contextual searches. Artist-based
+        queries are only a small tail signal so recommendations do not collapse into
+        the user's likes or most-played artists.
         """
         queries = []
 
-        # 1. Artist-based: top artists from taste profile
-        top_artists = taste.get("top_artists", [])
-        for artist in top_artists[:3]:
-            queries.append(artist)
+        # 1. Serendipity: fresh lanes that are not directly tied to likes.
+        exploratory_queries = [
+            "indie pop new release",
+            "alternative R&B night",
+            "city pop driving",
+            "dream pop playlist",
+            "lofi indie electronic",
+            "soulful pop hidden gems",
+            "bedroom pop",
+            "future funk city pop",
+            "ambient pop",
+            "post rock cinematic",
+            "网易云 飙升 新歌",
+            "华语独立 新歌",
+            "小众流行 推荐",
+            "夜晚 氛围 R&B",
+        ]
+        random.shuffle(exploratory_queries)
+        queries.extend(exploratory_queries[:2])
 
-        # 2. Genre + mood combination
+        # 2. Multilingual lanes keep J/K/English discovery alive even if the
+        # user's local library is mostly Chinese or liked songs.
+        language_queries = taste.get("language_queries", []) or [
+            "J-pop city pop",
+            "K-pop R&B",
+            "Japanese indie pop",
+            "Korean indie",
+            "English pop R&B",
+            "anime OST",
+        ]
+        random.shuffle(language_queries)
+        queries.extend(language_queries[:2])
+
+        # 3. Genre + mood combination
         genres = taste.get("genres", [])
         period = context.get("period", "")
         weather = context.get("weather_desc", "")
@@ -139,7 +169,7 @@ class MusicDiscovery:
         picked_mood = mood_keywords[0] if mood_keywords else "放松"
         queries.append(f"{picked_genre} {picked_mood}")
 
-        # 3. Activity-specific
+        # 4. Activity-specific
         if activity:
             activity_map = {
                 "studying": "学习 专注 纯音乐",
@@ -152,9 +182,17 @@ class MusicDiscovery:
             if act_query:
                 queries.append(act_query)
 
-        # 4. Genre from taste profile
+        # 5. Genre from taste profile
         if genres:
-            queries.append(f"{genres[0]} 精选")
+            genre_pool = genres[:]
+            random.shuffle(genre_pool)
+            queries.append(f"{genre_pool[0]} 精选")
+
+        # 6. A tiny artist-similarity tail, not the main source.
+        top_artists = taste.get("top_artists", [])[:8]
+        random.shuffle(top_artists)
+        for artist in top_artists[:1]:
+            queries.append(f"{artist} 相似 推荐")
 
         # Filter duplicates and queries already used this session
         fresh = []
@@ -162,6 +200,9 @@ class MusicDiscovery:
             if q not in self._session_queries:
                 fresh.append(q)
                 self._session_queries.add(q)
+        if not fresh:
+            self._session_queries.clear()
+            fresh = queries[:]
         return fresh
 
     # ── Netease API ────────────────────────────────────
