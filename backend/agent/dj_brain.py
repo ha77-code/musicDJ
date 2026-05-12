@@ -1,5 +1,6 @@
 """Central DJ Brain — orchestrates context, LLM, actions, and memory."""
 
+import json
 import random
 from datetime import datetime
 
@@ -42,10 +43,360 @@ class DJBrain:
 
     # ── Public API ──
 
+    
+
+    # -- Transition narration controls --
+
+    def _transition_depth(self, chat_context: str = "") -> str:
+        """Pick narration depth for transition copy."""
+        chat_len = len((chat_context or "").strip())
+        activity = (self._user_activity or "").strip()
+        if chat_len >= 80:
+            return "deep"
+        if activity in {"studying", "working", "before_sleep"}:
+            return "standard"
+        return "deep"
+
+    @staticmethod
+    def _contains_text(haystack: str, needle: str) -> bool:
+        h = (haystack or "").strip().lower()
+        n = (needle or "").strip().lower()
+        return bool(h and n and n in h)
+
+    @staticmethod
+    def _extract_lyric_hint(raw: str) -> str:
+        """Extract readable lyric line from lrc payload."""
+        import re
+
+        if not raw:
+            return ""
+        parts = []
+        for line in raw.split("/"):
+            clean = re.sub(r"\[\d{2}:\d{2}(?:[.:]\d{1,3})?\]", "", line).strip()
+            if not clean:
+                continue
+            if clean in {"??", "??", "??"}:
+                continue
+            if 3 <= len(clean) <= 28:
+                parts.append(clean)
+        return parts[0] if parts else ""
+
+    @staticmethod
+    def _build_story_themes(next_song: dict | None = None, chat_context: str = "") -> str:
+        song = next_song or {}
+        hints = []
+        if song.get("album_name"):
+            hints.append(f"mention album mood: {song.get('album_name', '')}")
+        lyric = DJBrain._extract_lyric_hint(song.get("lyric_snippet", ""))
+        if lyric:
+            hints.append(f"quote one lyric image naturally: {lyric}")
+        if (chat_context or "").strip():
+            hints.append("continue naturally from recent chat context")
+        hints.append("expand with creative origin, artist intent, lyric meaning, or your own interpretation")
+        return "; ".join(hints)
+
+    def _build_transition_user_prompt(self, *, time_str: str, weather_str: str,
+                                      current_song_str: str, next_song: dict,
+                                      history_str: str = "", tags: str = "",
+                                      skipped_str: str = "", artist_streak: str = "",
+                                      chat_context: str = "", depth: str = "deep") -> str:
+        """Prompt for transition narration with adaptive length constraints."""
+        next_song_str = f"{next_song.get('artist', '?')} - {next_song.get('title', '?')}"
+        next_title = next_song.get("title", "")
+        next_artist = next_song.get("artist", "")
+        song_detail = []
+        if next_song.get("album_name"):
+            song_detail.append(f"album: {next_song.get('album_name', '')}")
+        lyric_hint = self._extract_lyric_hint(next_song.get("lyric_snippet", ""))
+        if lyric_hint:
+            song_detail.append(f"lyric image: {lyric_hint}")
+
+        if depth == "short":
+            length_rule = "30-60 Chinese characters, concise and natural"
+        elif depth == "standard":
+            length_rule = "90-160 Chinese characters, richer but compact"
+        else:
+            length_rule = "160-280 Chinese characters, story-like and layered"
+
+        parts = [
+            f"time: {time_str}",
+            f"just played: {current_song_str}",
+            f"up next: {next_song_str}",
+        ]
+        if weather_str:
+            parts.insert(1, f"weather: {weather_str}")
+        if tags:
+            parts.append(f"tags: {tags}")
+        if song_detail:
+            parts.append("song details:\n- " + "\n- ".join(song_detail))
+        if skipped_str:
+            parts.append(skipped_str)
+        if artist_streak:
+            parts.append(artist_streak)
+        if history_str:
+            parts.append(f"recent lines (avoid repetition):\n{history_str}")
+        if chat_context:
+            parts.append(f"recent chat context (continue naturally):\n{chat_context}")
+
+        parts.extend([
+            "",
+            "Task: write a natural transition from previous song to next song.",
+            f"Length requirement: {length_rule}",
+            "Hard requirements:",
+            f"1) Must explicitly mention next track info: title '{next_title}' or artist '{next_artist}'",
+            "2) Keep it conversational, avoid robotic radio phrasing",
+            "3) You may expand with origin story, artist intent, lyric meaning, or spontaneous recommendation",
+            f"4) Optional angles: {self._build_story_themes(next_song, chat_context)}",
+            "5) Use natural spoken rhythm; do not use bracketed stage directions",
+            "Output must be JSON with fields say/reason/segue/mood/action.",
+            "Important: say must be in natural Chinese.",
+        ])
+
+        return "\n".join(parts)
+
+    def _ensure_rich_transition(self, action: DJAction, current_song: dict,
+                                next_song: dict, weather_desc: str = "",
+                                chat_context: str = "", depth: str = "deep") -> DJAction:
+        """Second-pass expansion to avoid rigid/too-short transition lines."""
+        say = (action.say or "").strip()
+        next_title = (next_song.get("title") or "").strip()
+        next_artist = (next_song.get("artist") or "").strip()
+        has_anchor = (
+            self._contains_text(say, next_title)
+            or self._contains_text(say, next_artist)
+        )
+
+        if depth == "short":
+            min_len = 24
+        elif depth == "standard":
+            min_len = 70
+        else:
+            min_len = 110
+
+        need_retry = (len(say) < min_len) or (not has_anchor)
+        if not need_retry:
+            return action
+
+        time_info = self.context.get_time_info()
+        weather_str = self.context.get_weather_str(
+            {"description": weather_desc} if weather_desc else None
+        )
+        history_str = "\n".join(self._recent_sayings(4))
+        tags = " ".join(next_song.get("tags", [])) if next_song.get("tags") else ""
+        skipped_str = self.context.get_skipped_summary()
+        artist_streak = self.context.get_artist_streak_info()
+        cur_str = f"{current_song.get('artist', '?')} - {current_song.get('title', '?')}"
+
+        system_prompt = (
+            "You are a human-like Chinese radio DJ. "
+            "Output JSON only with fields say/reason/segue/mood/action. "
+            "say is the spoken line in Chinese; reason is internal planning."
+        )
+        user_prompt = self._build_transition_user_prompt(
+            time_str=time_info["time_str"],
+            weather_str=weather_str,
+            current_song_str=cur_str,
+            next_song=next_song,
+            history_str=history_str,
+            tags=tags,
+            skipped_str=skipped_str,
+            artist_streak=artist_streak,
+            chat_context=chat_context or "",
+            depth=depth,
+        )
+
+        retry = self.llm.generate(system_prompt, user_prompt, json_mode=True)
+        if retry:
+            retry_action = self.parser.parse_json_response(retry.get("text", ""))
+            if retry_action and retry_action.say:
+                retry_action.action = action.action or "play_selected"
+                retry_action.selected_song_index = action.selected_song_index
+                retry_action.selected_song_title = action.selected_song_title
+                retry_action.selected_song_artist = action.selected_song_artist
+                return retry_action
+
+        lyric_hint = self._extract_lyric_hint(next_song.get("lyric_snippet", ""))
+        lyric_piece = f"它那句“{lyric_hint}”很容易让人入戏。" if lyric_hint else ""
+        album_piece = f"放到《{next_song.get('album_name')}》这张专辑里听会更完整。" if next_song.get("album_name") else ""
+        chat_piece = "你刚才聊到的情绪我记着呢，" if (chat_context or "").strip() else ""
+        period = time_info["period"]
+        weather_piece = f"{weather_desc}的" if weather_desc else ""
+        action.say = (
+            f"{chat_piece}刚才那首像是把情绪铺开，"
+            f"接下来我想把这条线再往里走一点。"
+            f"{next_artist}的《{next_title}》在这个{period}、{weather_piece}氛围里会特别顺，"
+            f"不是硬推节奏，而是慢慢把心绪托起来。"
+            f"{lyric_piece}{album_piece}"
+            "你先听完前半段，再告诉我你被哪一句打到。"
+        )
+        return action
+
+    # Runtime overrides: keep generation driven by structured payloads instead of
+    # long handwritten prompts. These later method definitions replace the
+    # earlier exploratory versions above.
+
+    @staticmethod
+    def _extract_lyric_hint(raw: str) -> str:
+        """Extract a short lyric hint from lrc payload."""
+        import re
+
+        if not raw:
+            return ""
+
+        parts = []
+        for line in raw.split("/"):
+            clean = re.sub(r"\[\d{2}:\d{2}(?:[.:]\d{1,3})?\]", "", line).strip()
+            if not clean:
+                continue
+            if len(clean) < 3 or len(clean) > 28:
+                continue
+            if clean.endswith(":"):
+                continue
+            parts.append(clean)
+        return parts[0] if parts else ""
+
+    @staticmethod
+    def _depth_length_rules(depth: str) -> tuple[int, int]:
+        if depth == "short":
+            return 30, 60
+        if depth == "standard":
+            return 90, 160
+        return 160, 280
+
+    @staticmethod
+    def _minimal_transition_system_prompt() -> str:
+        return (
+            "You are a Chinese radio DJ. "
+            "Read the structured payload and return one JSON object only. "
+            "Keep `say` in natural spoken Chinese."
+        )
+
+    def _build_transition_payload(self, *, current_song: dict, next_song: dict,
+                                  time_str: str, weather_str: str = "",
+                                  history_str: str = "", tags: str = "",
+                                  skipped_str: str = "", artist_streak: str = "",
+                                  chat_context: str = "", depth: str = "deep") -> str:
+        """Build structured transition payload instead of long handwritten prompt text."""
+        min_len, max_len = self._depth_length_rules(depth)
+        lyric_hint = self._extract_lyric_hint(next_song.get("lyric_snippet", ""))
+        payload = {
+            "task": "transition",
+            "output": {
+                "format": "json",
+                "fields": ["say", "reason", "segue", "mood", "action"],
+                "language": "zh-CN",
+            },
+            "constraints": {
+                "must_anchor_next_song": True,
+                "next_song_title": next_song.get("title", ""),
+                "next_song_artist": next_song.get("artist", ""),
+                "length_chars": {"min": min_len, "max": max_len},
+                "tone": "natural_radio_dj",
+                "allow_topics": [
+                    "origin_story",
+                    "artist_intent",
+                    "lyric_meaning",
+                    "personal_interpretation",
+                    "chat_followup",
+                ],
+                "forbid": [
+                    "robotic_broadcast",
+                    "bracket_stage_directions",
+                    "generic_no_song_anchor",
+                ],
+            },
+            "context": {
+                "time": time_str,
+                "weather": weather_str,
+                "current_song": {
+                    "title": current_song.get("title", ""),
+                    "artist": current_song.get("artist", ""),
+                },
+                "next_song": {
+                    "title": next_song.get("title", ""),
+                    "artist": next_song.get("artist", ""),
+                    "album_name": next_song.get("album_name", ""),
+                    "tags": tags,
+                    "lyric_hint": lyric_hint,
+                },
+                "recent_chat": chat_context,
+                "recent_lines": history_str,
+                "skipped_summary": skipped_str,
+                "artist_streak": artist_streak,
+            },
+        }
+        return json.dumps(payload, ensure_ascii=False, indent=2)
+
+    def _ensure_rich_transition(self, action: DJAction, current_song: dict,
+                                next_song: dict, weather_desc: str = "",
+                                chat_context: str = "", depth: str = "deep") -> DJAction:
+        """Second-pass expansion to avoid rigid or too-short transition lines."""
+        say = (action.say or "").strip()
+        next_title = (next_song.get("title") or "").strip()
+        next_artist = (next_song.get("artist") or "").strip()
+        has_anchor = (
+            self._contains_text(say, next_title)
+            or self._contains_text(say, next_artist)
+        )
+        min_len, _ = self._depth_length_rules(depth)
+        need_retry = (len(say) < min_len) or (not has_anchor)
+        if not need_retry:
+            return action
+
+        time_info = self.context.get_time_info()
+        weather_str = self.context.get_weather_str(
+            {"description": weather_desc} if weather_desc else None
+        )
+        history_str = "\n".join(self._recent_sayings(4))
+        tags = " ".join(next_song.get("tags", [])) if next_song.get("tags") else ""
+        skipped_str = self.context.get_skipped_summary()
+        artist_streak = self.context.get_artist_streak_info()
+
+        retry = self.llm.generate(
+            self._minimal_transition_system_prompt(),
+            self._build_transition_payload(
+                current_song=current_song,
+                next_song=next_song,
+                time_str=time_info["time_str"],
+                weather_str=weather_str,
+                history_str=history_str,
+                tags=tags,
+                skipped_str=skipped_str,
+                artist_streak=artist_streak,
+                chat_context=chat_context or "",
+                depth=depth,
+            ),
+            json_mode=True,
+        )
+        if retry:
+            retry_action = self.parser.parse_json_response(retry.get("text", ""))
+            if retry_action and retry_action.say:
+                retry_action.action = action.action or "play_selected"
+                retry_action.selected_song_index = action.selected_song_index
+                retry_action.selected_song_title = action.selected_song_title
+                retry_action.selected_song_artist = action.selected_song_artist
+                return retry_action
+
+        lyric_hint = self._extract_lyric_hint(next_song.get("lyric_snippet", ""))
+        lyric_piece = f"它那句“{lyric_hint}”很容易让人入戏。" if lyric_hint else ""
+        album_piece = f"放到《{next_song.get('album_name')}》这张专辑里听会更完整。" if next_song.get("album_name") else ""
+        chat_piece = "你刚才聊到的情绪我记着呢，" if (chat_context or "").strip() else ""
+        period = time_info["period"]
+        weather_piece = f"{weather_desc}的" if weather_desc else ""
+        action.say = (
+            f"{chat_piece}刚才那首像是把情绪铺开，"
+            f"接下来我想把这条线再往里走一点。"
+            f"{next_artist}的《{next_title}》在这个{period}、{weather_piece}氛围里会特别顺，"
+            f"不是硬推节奏，而是慢慢把心绪托起来。"
+            f"{lyric_piece}{album_piece}"
+            "你先听完前半段，再告诉我你被哪一句打到。"
+        )
+        return action
+
     def think_transition(self, current_song: dict, next_song: dict | None = None,
-                         weather_data: dict | None = None,
-                         history: list[str] | None = None,
-                         user_activity: str = "",
+                          weather_data: dict | None = None,
+                          history: list[str] | None = None,
+                          user_activity: str = "",
                          playlist: list[dict] | None = None,
                          chat_context: str = "") -> tuple[DJAction, dict | None]:
         """Generate a DJ transition. If playlist given, LLM selects next song.
@@ -114,12 +465,17 @@ class DJBrain:
 
         # Get recently played / skipped tracks
         cur_id = current_song.get("netease_id") or current_song.get("path", "")
-        recent_transitions = self.memory.get_recent_transitions(10)
+        recent_transitions = self.memory.get_recent_transitions(15)
         recent_ids = []
-        for t in recent_transitions[-5:]:
+        recent_title_artists = set()  # (title, artist) tuples for hard dedup
+        for t in recent_transitions[-8:]:
             rid = t.get("next_song_id", "")
             if rid and rid != cur_id:
                 recent_ids.append(rid)
+            na = (t.get("next_song_name", "").strip().lower(),
+                  t.get("next_song_artist", "").strip().lower())
+            if na[0] and na[1]:
+                recent_title_artists.add(na)
 
         skipped_ids = []
         for t in recent_transitions:
@@ -150,6 +506,7 @@ class DJBrain:
             current_song_id=cur_id,
             playlist=playlist,
             recently_played_ids=recent_ids,
+            recent_title_artists=recent_title_artists,
             skipped_ids=skipped_ids,
             user_activity=self._user_activity,
             time_period=time_info["period"],
@@ -186,6 +543,16 @@ class DJBrain:
                 f"只有在新歌都不合适的情况下，才从歌单里选。"
             )
 
+        # CRITICAL: instruct LLM to avoid recently played songs
+        recent_names = [f"{t.get('next_song_artist', '')} - {t.get('next_song_name', '')}"
+                        for t in recent_transitions[-5:]
+                        if t.get('next_song_name')]
+        if recent_names:
+            user_prompt += (
+                f"\n\n⚠️ 最近5首已经播过（绝对不要再选这些歌！）：\n"
+                + "\n".join(f"  ❌ {n}" for n in recent_names)
+            )
+
         # Add chat context so DJ remembers what user just asked
         if chat_context:
             user_prompt += (
@@ -195,6 +562,7 @@ class DJBrain:
         llm_result = self.llm.generate(system_prompt, user_prompt, json_mode=True)
         action = None
         selected_song = None
+        depth = self._transition_depth(chat_context)
 
         if llm_result:
             action = self.parser.parse_json_response(llm_result["text"])
@@ -212,6 +580,7 @@ class DJBrain:
                         "weight": sel["weight"],
                         "hint": sel.get("hint", ""),
                         "cover_url": sel.get("cover_url", ""),
+                        "album_name": sel.get("album_name", ""),
                     }
                     action.selected_song_title = sel["title"]
                     action.selected_song_artist = sel["artist"]
@@ -221,26 +590,46 @@ class DJBrain:
                         try:
                             detail = self.discovery.get_song_detail(sel["netease_id"])
                             if detail:
-                                selected_song["album_name"] = detail.get("album_name", "")
+                                selected_song["album_name"] = selected_song["album_name"] or detail.get("album_name", "")
                                 selected_song["album_pic"] = detail.get("album_pic", "")
                             lyric = self.discovery.get_song_lyric_snippet(sel["netease_id"], 3)
                             if lyric:
                                 selected_song["lyric_snippet"] = lyric
                         except Exception:
                             pass
+                    # Rebuild narration for natural long-form transition quality.
+                    action = self._ensure_rich_transition(
+                        action,
+                        current_song=current_song,
+                        next_song=selected_song,
+                        weather_desc=weather_desc,
+                        chat_context=chat_context,
+                        depth=depth,
+                    )
                 else:
                     action = None
 
-        # Fallback: pick best pool candidate
+        # Fallback: pick best pool candidate, skipping recently played
         if not action or not selected_song:
             if pool:
-                best = pool[0]
+                # Pick first song that isn't in recently played (by title+artist)
+                best = None
+                for candidate in pool:
+                    c_key = (candidate.get("title", "").strip().lower(),
+                             candidate.get("artist", "").strip().lower())
+                    if c_key not in recent_title_artists:
+                        best = candidate
+                        break
+                if best is None:
+                    best = pool[0]  # all songs are repeats, pick any
+
                 selected_song = {"playlist_index": best["playlist_index"],
                                  "title": best["title"], "artist": best["artist"],
                                  "netease_id": best.get("netease_id", ""),
                                  "path": best.get("path", ""),
                                  "source": best.get("source", "local"),
-                                 "cover_url": best.get("cover_url", "")}
+                                 "cover_url": best.get("cover_url", ""),
+                                 "album_name": best.get("album_name", "")}
                 # Generate varied fallback sayings instead of fixed templates
                 source_hint = "新发现的" if best.get("source") == "netease_discovery" else ""
                 fallback_sayings = [
@@ -255,6 +644,14 @@ class DJBrain:
                     selected_song_index=best["pool_index"],
                     selected_song_title=best["title"],
                     selected_song_artist=best["artist"])
+                action = self._ensure_rich_transition(
+                    action,
+                    current_song=current_song,
+                    next_song=selected_song,
+                    weather_desc=weather_desc,
+                    chat_context=chat_context,
+                    depth=depth,
+                )
                 llm_result = llm_result or {"text": "fallback", "model": "fallback",
                                             "latency_ms": 0, "method": "fallback"}
             else:

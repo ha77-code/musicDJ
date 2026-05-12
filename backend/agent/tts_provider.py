@@ -38,20 +38,22 @@ class TTSProvider:
         # SSML config
         self.ssml_enabled = tts_cfg.get("ssml_enabled", True)
         mood_params = tts_cfg.get("mood_params", {})
-        if mood_params:
-            self.mood_params = mood_params  # legacy map for fallback
+        # Legacy plain-text mood map, always initialize to avoid attribute errors.
+        self.mood_params = mood_params if isinstance(mood_params, dict) else {}
         self.ssml_mood_config = tts_cfg.get("ssml_mood_config", DEFAULT_SSML_MOOD_CONFIG)
 
     # ── Public API ─────────────────────────────────────
 
-    def synthesize(self, text: str, mood: str = "chill") -> bytes | None:
+    def synthesize(self, text: str, mood: str = "chill",
+                   force_plain: bool = False) -> bytes | None:
         """Convert text to speech, returns audio bytes (mp3)."""
         if not self.app_id or not self.token or not text:
             return None
 
         text = self._clean_text(text)
 
-        if self.ssml_enabled:
+        use_ssml = self.ssml_enabled and not force_plain
+        if use_ssml:
             clean_text, emphasis_words = self._extract_emphasis(text)
             ssml_text = self._build_ssml(clean_text, mood, emphasis_words)
             text_type = "ssml"
@@ -134,7 +136,7 @@ class TTSProvider:
             return None
 
         duration = result.get("addition", {}).get("duration", "?")
-        mode = "SSML" if self.ssml_enabled else "plain"
+        mode = "SSML" if use_ssml else "plain"
         print(f"[TTS] Synthesized {len(audio_bytes)} bytes ({mode}), {duration}ms, latency={elapsed_ms}ms, mood={mood}")
         return audio_bytes
 
@@ -177,12 +179,9 @@ class TTSProvider:
             if audio is None:
                 # Retry with plain text (SSML might have failed on short text)
                 try:
-                    self.ssml_enabled = False
-                    audio = self.synthesize(group_text, mood)
+                    audio = self.synthesize(group_text, mood, force_plain=True)
                 except Exception:
                     pass
-                finally:
-                    self.ssml_enabled = self.ssml_enabled
 
             with results_lock:
                 results[idx] = audio

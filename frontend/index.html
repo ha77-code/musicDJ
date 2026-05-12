@@ -1,117 +1,396 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>AI DJ · clauseekio</title>
+<title>AI DJ - clauseekio</title>
 <style>
-  /* ═══════════════════════════════════════════════
-     AI DJ · Nova — Deep Space × Cyan-Purple
-     ═══════════════════════════════════════════════ */
   :root {
-    --bg: #050510;
-    --cyan-r: 0; --cyan-g: 212; --cyan-b: 255;
-    --cyan: rgb(var(--cyan-r), var(--cyan-g), var(--cyan-b));
-    --purple-r: 124; --purple-g: 58; --purple-b: 237;
-    --purple: rgb(var(--purple-r), var(--purple-g), var(--purple-b));
-    --glass: rgba(10,10,30,0.55);
-    --glass-border: rgba(255,255,255,0.06);
-    --radius-lg: 24px;
+    --bg-0: #010804;
+    --bg-1: #03120a;
+    --bg-2: #092116;
+    --panel: rgba(4, 16, 12, 0.48);
+    --panel-strong: rgba(5, 18, 13, 0.72);
+    --panel-soft: rgba(4, 12, 10, 0.36);
+    --line: rgba(110, 231, 183, 0.26);
+    --line-strong: rgba(134, 239, 172, 0.45);
+    --text-main: #f2fff7;
+    --text-sub: rgba(208, 247, 228, 0.72);
+    --text-soft: rgba(174, 219, 198, 0.56);
+    --neon: #34d399;
+    --neon-strong: #22c55e;
+    --danger: #ef4444;
+    --radius-lg: 22px;
+    --radius-xl: 28px;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: "SF Pro Display", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-    background: #050510; color: #eaeaef;
-    height: 100vh; overflow: hidden;
-    user-select: none; -webkit-user-select: none;
-    -webkit-font-smoothing: antialiased;
-  }
-  body.cl-a { overflow-y: auto; background: #0a0a0f; }
 
-  /* Animations */
-  @keyframes twinkle { 0%,100%{opacity:0.1} 50%{opacity:0.8} }
-  @keyframes breathe { 0%,100%{opacity:0.4;transform:scale(1)} 50%{opacity:1;transform:scale(1.025)} }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "Space Grotesk", "Bahnschrift", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background:
+      radial-gradient(circle at 10% 20%, rgba(34, 197, 94, 0.15), transparent 44%),
+      radial-gradient(circle at 86% 0%, rgba(16, 185, 129, 0.12), transparent 48%),
+      linear-gradient(145deg, var(--bg-0), #020d08 42%, #01100a 72%, #010804);
+    color: var(--text-main);
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(
+        to right,
+        transparent 0,
+        transparent 31px,
+        rgba(74, 222, 128, 0.03) 32px
+      );
+    z-index: -2;
+    opacity: 0.4;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(circle at center, transparent 55%, rgba(0, 0, 0, 0.58));
+    z-index: -1;
+  }
+
+  body.cl-a { overflow-y: auto; background: #06110b; }
+
+  @keyframes twinkle { 0%,100%{opacity:0.08} 50%{opacity:0.76} }
+  @keyframes breathe { 0%,100%{opacity:0.42;transform:scale(1)} 50%{opacity:1;transform:scale(1.022)} }
   @keyframes ringPulse { 0%,100%{opacity:0.5;transform:translate(-50%,-50%) scale(1)} 50%{opacity:1;transform:translate(-50%,-50%) scale(1.04)} }
-  @keyframes onAirPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  @keyframes onAirPulse { 0%,100%{opacity:1} 50%{opacity:0.28} }
   @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes rhythmGlow { 0%,100%{opacity:0.16;transform:scale(1)} 50%{opacity:0.56;transform:scale(1.04)} }
+  @keyframes sweep {
+    0% { transform: translateX(-120%); }
+    100% { transform: translateX(120%); }
+  }
 
   .scrollbar-hide::-webkit-scrollbar { display: none; }
   .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-  .glass { background: rgba(10,10,30,0.55); backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(255,255,255,0.06); }
-  .glass-light { background: rgba(255,255,255,0.05); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.08); }
+
+  .glass {
+    position: relative;
+    background: linear-gradient(165deg, rgba(8, 26, 19, 0.72), rgba(2, 12, 9, 0.42));
+    backdrop-filter: blur(20px) saturate(150%);
+    border: 1px solid var(--line);
+    box-shadow:
+      inset 0 1px 0 rgba(204, 255, 228, 0.08),
+      0 20px 48px rgba(0, 0, 0, 0.48);
+  }
+
+  .glass-light {
+    background: var(--panel-soft);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(167, 243, 208, 0.22);
+  }
+
+  .app-shell {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .app-shell::before {
+    content: '';
+    position: absolute;
+    inset: 72px 18px 18px;
+    border: 1px solid rgba(167, 243, 208, 0.13);
+    border-radius: 30px;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .dj-grid-overlay {
+    background-image:
+      linear-gradient(to right, rgba(167, 243, 208, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(167, 243, 208, 0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.62), transparent 88%);
+  }
+
+  #root {
+    position: relative;
+    z-index: 5;
+    width: 100%;
+    height: 100%;
+  }
 
   #bgCanvas { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
 
-  .modal-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
-  .modal-overlay.show { opacity: 1; pointer-events: auto; }
-  .modal-box { background: rgba(10,10,30,0.9); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 28px; width: min(520px, 92vw); max-height: 80vh; overflow-y: auto; }
-  .modal-box h2 { color: #fff; font-size: 18px; font-weight: 600; margin-bottom: 16px; }
-  .modal-box input { width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #fff; font-size: 13px; outline: none; }
-  .modal-box input:focus { border-color: rgba(0,212,255,0.4); }
-  .btn { padding: 8px 18px; border-radius: 10px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; font-family: inherit; }
-  .btn-grad { background: linear-gradient(135deg, #06b6d4, #a855f7); color: #fff; box-shadow: 0 0 20px rgba(6,182,212,0.3); }
-  .btn-grad:hover { box-shadow: 0 0 30px rgba(6,182,212,0.5); transform: scale(1.03); }
-  .btn-ghost { background: rgba(255,255,255,0.05); color: #9ca3af; border: 1px solid rgba(255,255,255,0.1); }
-  .btn-ghost:hover { background: rgba(255,255,255,0.1); color: #fff; }
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+  }
 
-  /* Playlist slide */
-  .pl-slide { position: fixed; left: 0; top: 52px; bottom: 0; z-index: 150; width: 320px;
-    background: rgba(8,8,20,0.85); backdrop-filter: blur(24px); border-right: 1px solid rgba(255,255,255,0.06);
-    transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.4,0,0.2,1); }
+  .modal-overlay.show { opacity: 1; pointer-events: auto; }
+
+  .modal-box {
+    background: rgba(5, 14, 10, 0.94);
+    border: 1px solid rgba(110, 231, 183, 0.2);
+    border-radius: var(--radius-lg);
+    padding: 28px;
+    width: min(540px, 92vw);
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 30px 56px rgba(0, 0, 0, 0.52);
+  }
+
+  .modal-box h2 {
+    color: #f0fff8;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    letter-spacing: 0.02em;
+  }
+
+  .modal-box input {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(167, 243, 208, 0.22);
+    background: rgba(4, 12, 9, 0.8);
+    color: #f0fff8;
+    font-size: 13px;
+    outline: none;
+  }
+
+  .modal-box input:focus { border-color: rgba(74, 222, 128, 0.58); }
+
+  .btn {
+    padding: 8px 18px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+
+  .btn-grad {
+    background: linear-gradient(135deg, #0f766e, #16a34a 58%, #22c55e);
+    color: #f4fff8;
+    box-shadow: 0 0 22px rgba(34, 197, 94, 0.26);
+  }
+
+  .btn-grad:hover {
+    box-shadow: 0 0 30px rgba(34, 197, 94, 0.42);
+    transform: translateY(-1px);
+  }
+
+  .btn-ghost {
+    background: rgba(10, 18, 14, 0.62);
+    color: rgba(211, 237, 223, 0.8);
+    border: 1px solid rgba(167, 243, 208, 0.2);
+  }
+
+  .btn-ghost:hover {
+    background: rgba(16, 30, 23, 0.8);
+    color: #f3fff9;
+    border-color: rgba(134, 239, 172, 0.44);
+  }
+
+  .pl-slide {
+    position: fixed;
+    left: 0;
+    top: 64px;
+    bottom: 0;
+    z-index: 150;
+    width: 344px;
+    background: linear-gradient(180deg, rgba(5, 18, 13, 0.95), rgba(3, 12, 9, 0.9));
+    backdrop-filter: blur(24px);
+    border-right: 1px solid rgba(167, 243, 208, 0.2);
+    transform: translateX(-100%);
+    transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 24px 0 52px rgba(0, 0, 0, 0.34);
+  }
+
   .pl-slide.open { transform: translateX(0); }
-  .pl-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; cursor: pointer; transition: background 0.15s; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 13px; }
-  .pl-item:hover { background: rgba(255,255,255,0.04); }
-  .pl-item.active { background: rgba(0,212,255,0.08); border-left: 2px solid #06b6d4; }
-  .pl-idx { color: #585878; width: 24px; text-align: right; font-size: 11px; }
-  .pl-name { flex: 1; color: #eaeaef; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pl-dur { color: #585878; font-size: 11px; }
-  .pl-del { color: #ef4444; cursor: pointer; padding: 2px 6px; border-radius: 4px; font-size: 14px; opacity: 0; transition: opacity 0.15s; }
+
+  .pl-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-bottom: 1px solid rgba(167, 243, 208, 0.05);
+    font-size: 13px;
+  }
+
+  .pl-item:hover { background: rgba(34, 197, 94, 0.09); }
+
+  .pl-item.active {
+    background: rgba(34, 197, 94, 0.14);
+    border-left: 2px solid #34d399;
+  }
+
+  .pl-idx { color: rgba(183, 214, 197, 0.46); width: 24px; text-align: right; font-size: 11px; }
+  .pl-name { flex: 1; color: #eafff3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pl-dur { color: rgba(183, 214, 197, 0.46); font-size: 11px; }
+  .pl-del {
+    color: var(--danger);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 14px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
   .pl-item:hover .pl-del { opacity: 1; }
 
-  /* Vinyl disc */
-  .vinyl { width: 200px; height: 200px; border-radius: 50%;
-    background: radial-gradient(circle at center, #1a1a2e 0%, #2a1a3e 15%, #111 40%, #0a0a0a 60%, #222 62%, #0a0a0a 65%, #111 100%);
-    position: relative; transition: animation-play-state 0.5s;
+  .rhythm-shell {
+    position: relative;
+    border-radius: 22px;
+    border: 1px solid var(--line-strong);
+    overflow: hidden;
+    background: linear-gradient(160deg, rgba(4, 18, 12, 0.82), rgba(3, 10, 8, 0.42));
   }
-  .vinyl.spinning { animation: spin 6s linear infinite; }
-  .vinyl.paused { animation: spin 6s linear infinite; animation-play-state: paused; }
 
-  /* Chat */
-  .chat-msg { display: flex; gap: 10px; margin-bottom: 12px; animation: fadeInUp 0.3s ease; }
+  .rhythm-shell::before {
+    content: '';
+    position: absolute;
+    inset: -18%;
+    background: radial-gradient(circle at center, rgba(34, 197, 94, 0.24), rgba(5, 46, 22, 0.07) 45%, transparent 75%);
+    animation: rhythmGlow 4.2s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  .rhythm-shell::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 20%;
+    background: linear-gradient(to right, transparent, rgba(220, 252, 231, 0.16), transparent);
+    animation: sweep 3.2s ease-in-out infinite;
+    pointer-events: none;
+    opacity: 0.5;
+  }
+
+  .chat-msg { display: flex; gap: 10px; margin-bottom: 12px; animation: fadeInUp 0.28s ease; }
   .chat-msg.user { flex-direction: row-reverse; }
-  .chat-avatar { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
-  .chat-msg.dj .chat-avatar { background: linear-gradient(135deg, rgba(6,182,212,0.2), rgba(168,85,247,0.2)); border: 1px solid rgba(6,182,212,0.2); }
-  .chat-msg.user .chat-avatar { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
-  .chat-bubble { padding: 10px 14px; border-radius: 14px; font-size: 13px; line-height: 1.5; max-width: 85%; }
-  .chat-msg.dj .chat-bubble { background: rgba(6,182,212,0.08); border: 1px solid rgba(6,182,212,0.12); color: #eaeaef; border-bottom-left-radius: 4px; }
-  .chat-msg.user .chat-bubble { background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.15); color: #eaeaef; border-bottom-right-radius: 4px; }
+  .chat-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
 
-  /* Activity chips */
-  .act-chip { padding: 4px 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); color: #9898b8; font-size: 11px; cursor: pointer; transition: all 0.2s; font-family: inherit; white-space: nowrap; }
-  .act-chip:hover { border-color: rgba(0,212,255,0.3); color: #06b6d4; }
-  .act-chip.active { background: rgba(0,212,255,0.1); border-color: rgba(0,212,255,0.3); color: #06b6d4; }
+  .chat-bubble {
+    padding: 11px 13px;
+    border-radius: 14px;
+    font-size: 13px;
+    line-height: 1.6;
+    max-width: 86%;
+    letter-spacing: 0.01em;
+  }
 
-  /* Search results */
-  .sr-item { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; cursor: pointer; transition: background 0.15s; }
-  .sr-item:hover { background: rgba(255,255,255,0.04); }
-  .sr-cover { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: rgba(255,255,255,0.05); }
+  .act-chip {
+    padding: 4px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: rgba(255, 255, 255, 0.74);
+    color: rgba(51, 65, 85, 0.82);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+
+  .act-chip:hover {
+    border-color: rgba(74, 222, 128, 0.45);
+    color: #14532d;
+    background: rgba(236, 253, 245, 0.92);
+  }
+
+  .act-chip.active {
+    background: rgba(34, 197, 94, 0.14);
+    border-color: rgba(74, 222, 128, 0.55);
+    color: #064e3b;
+    box-shadow: 0 0 14px rgba(34, 197, 94, 0.18);
+  }
+
+  .sr-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .sr-item:hover { background: rgba(34, 197, 94, 0.08); }
+  .sr-cover { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: rgba(255, 255, 255, 0.05); }
   .sr-info { flex: 1; min-width: 0; }
-  .sr-name { color: #fff; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sr-artist { color: #9898b8; font-size: 11px; margin-top: 2px; }
+  .sr-name { color: #f0fff8; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sr-artist { color: rgba(186, 219, 201, 0.66); font-size: 11px; margin-top: 2px; }
 
-  /* Rec cards */
-  .rec-card { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); transition: all 0.2s; cursor: pointer; margin-bottom: 8px; }
-  .rec-card:hover { background: rgba(255,255,255,0.06); border-color: rgba(6,182,212,0.2); }
-  .rec-cover { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; background: rgba(255,255,255,0.05); }
+  .rec-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 12px;
+    background: rgba(4, 12, 9, 0.55);
+    border: 1px solid rgba(110, 231, 183, 0.18);
+    transition: all 0.2s;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+
+  .rec-card:hover {
+    background: rgba(9, 24, 18, 0.66);
+    border-color: rgba(74, 222, 128, 0.4);
+    transform: translateY(-1px);
+  }
+
+  .rec-cover { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; background: rgba(255, 255, 255, 0.05); }
   .rec-info { flex: 1; min-width: 0; }
-  .rec-title { color: #fff; font-size: 12px; font-weight: 500; }
-  .rec-artist { color: #9898b8; font-size: 11px; }
-  .rec-reason { color: #06b6d4; font-size: 10px; margin-top: 2px; }
+  .rec-title { color: #f0fff8; font-size: 12px; font-weight: 600; }
+  .rec-artist { color: rgba(183, 215, 197, 0.66); font-size: 11px; }
+  .rec-reason { color: #86efac; font-size: 10px; margin-top: 2px; }
 
-  /* Claudio view */
   .cl-view { display: none; }
   .cl-view.active { display: flex; flex-direction: column; }
+
+  @media (max-width: 1024px) {
+    .app-shell::before {
+      inset: 72px 10px 10px;
+      border-radius: 22px;
+    }
+    .pl-slide { width: 300px; }
+  }
 </style>
 </head>
 <body>
@@ -119,10 +398,10 @@
 <audio id="audioPlayer" preload="auto"></audio>
 <canvas id="bgCanvas"></canvas>
 
-<script src="/react.min.js"></script>
-<script src="/react-dom.min.js"></script>
-<script src="/babel.min.js"></script>
-<script src="/tailwind.js"></script>
+<script src="./react.min.js"></script>
+<script src="./react-dom.min.js"></script>
+<script src="./babel.min.js"></script>
+<script src="./tailwind.js"></script>
 
 <script type="text/babel">
 const { useState, useEffect, useRef, useReducer, useCallback, useMemo } = React;
@@ -246,6 +525,7 @@ const initialState = {
   clRepeat: 'off',
   clVisualMode: 'Arcs',
   clAudioSidebar: null,
+  voiceMode: 'realtime',
 };
 
 function reducer(state, action) {
@@ -289,6 +569,7 @@ function reducer(state, action) {
     }
     case 'SET_VISUAL_MODE': return { ...state, clVisualMode: action.payload };
     case 'TOGGLE_SIDEBAR': return { ...state, clAudioSidebar: state.clAudioSidebar === action.payload ? null : action.payload };
+    case 'SET_VOICE_MODE': return { ...state, voiceMode: action.payload };
     default: return state;
   }
 }
@@ -1378,39 +1659,159 @@ function App() {
   const [modal, setModal] = useState({ import: false, search: false, playlist: false, likes: false });
   const [searchInitKw, setSearchInitKw] = useState('');
   const [recCards, setRecCards] = useState([]);
+  const transitionTokenRef = useRef(0);
+  const transitionTimerRef = useRef(null);
+  const chatVoiceRef = useRef({
+    sessionId: 0,
+    queue: [],
+    player: null,
+    streamDone: true,
+    waiters: [],
+  });
 
   const audioActions = useAudioPlayer(audioRef, state, dispatch);
   audioActionsRef.current = audioActions;
   const viz = useAudioVisualizer(audioRef, state.isPlaying);
 
-  // These must be defined BEFORE useTTS since useTTS takes handleTtsEnd as onEnd callback
+  const cancelTransitionFallback = useCallback(() => {
+    transitionTokenRef.current += 1;
+    if (transitionTimerRef.current) {
+      clearTimeout(transitionTimerRef.current);
+      transitionTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleTransitionFallback = useCallback((token, timeoutMs, onTimeout) => {
+    if (transitionTimerRef.current) {
+      clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = setTimeout(() => {
+      transitionTimerRef.current = null;
+      if (token !== transitionTokenRef.current) return;
+      onTimeout();
+    }, timeoutMs);
+  }, []);
+
+  const resolveChatVoiceWaiters = useCallback(() => {
+    const st = chatVoiceRef.current;
+    if (!st.streamDone || st.queue.length > 0 || st.player) return;
+    const waiters = st.waiters.splice(0, st.waiters.length);
+    for (const w of waiters) {
+      try { w.resolve(); } catch (e) {}
+    }
+  }, []);
+
+  const playNextChatVoice = useCallback((sessionId) => {
+    const st = chatVoiceRef.current;
+    if (st.sessionId !== sessionId) return;
+    if (st.player || st.queue.length === 0) {
+      resolveChatVoiceWaiters();
+      return;
+    }
+    const url = st.queue.shift();
+    const audio = new Audio(url);
+    st.player = audio;
+    let settled = false;
+    const finalize = () => {
+      if (settled) return;
+      settled = true;
+      try { URL.revokeObjectURL(url); } catch (e) {}
+      const cur = chatVoiceRef.current;
+      if (cur.sessionId !== sessionId) return;
+      cur.player = null;
+      if (cur.queue.length > 0) playNextChatVoice(sessionId);
+      else resolveChatVoiceWaiters();
+    };
+    audio.onended = finalize;
+    audio.onerror = finalize;
+    audio.play().catch(finalize);
+  }, [resolveChatVoiceWaiters]);
+
+  const markChatVoiceStreamDone = useCallback((sessionId) => {
+    const st = chatVoiceRef.current;
+    if (st.sessionId !== sessionId) return;
+    st.streamDone = true;
+    if (st.queue.length === 0 && !st.player) resolveChatVoiceWaiters();
+  }, [resolveChatVoiceWaiters]);
+
+  const stopChatVoice = useCallback(() => {
+    const st = chatVoiceRef.current;
+    st.sessionId += 1;
+    if (st.player) {
+      st.player.onended = null;
+      st.player.onerror = null;
+      try { st.player.pause(); } catch (e) {}
+      st.player = null;
+    }
+    for (const url of st.queue) {
+      try { URL.revokeObjectURL(url); } catch (e) {}
+    }
+    st.queue = [];
+    st.streamDone = true;
+    const waiters = st.waiters.splice(0, st.waiters.length);
+    for (const w of waiters) {
+      try { w.resolve(); } catch (e) {}
+    }
+  }, []);
+
+  const waitForChatVoiceDrain = useCallback((sessionId) => {
+    const st = chatVoiceRef.current;
+    if (st.sessionId !== sessionId) return Promise.resolve();
+    if (st.streamDone && st.queue.length === 0 && !st.player) return Promise.resolve();
+    return new Promise((resolve) => {
+      st.waiters.push({ sessionId, resolve });
+    });
+  }, []);
+
+  const enqueueChatVoiceChunk = useCallback((sessionId, base64Chunk) => {
+    const st = chatVoiceRef.current;
+    if (st.sessionId !== sessionId || !base64Chunk) return;
+    try {
+      const bin = atob(base64Chunk);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'audio/mpeg' });
+      st.queue.push(URL.createObjectURL(blob));
+      playNextChatVoice(sessionId);
+    } catch (e) {}
+  }, [playNextChatVoice]);
+
+  const uiAudioActions = useMemo(() => ({
+    ...audioActions,
+    loadSong: (idx) => { cancelTransitionFallback(); audioActions.loadSong(idx); },
+    nextTrack: () => { cancelTransitionFallback(); audioActions.nextTrack(); },
+    prevTrack: () => { cancelTransitionFallback(); audioActions.prevTrack(); },
+  }), [audioActions, cancelTransitionFallback]);
+
   const loadPendingSong = useCallback(() => {
+    cancelTransitionFallback();
     if (state.pendingNext) {
       dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+      dispatch({ type: 'SET_PENDING_SONG', payload: null });
       dispatch({ type: 'CLEAR_SPEECH' });
+      dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
       audioActions.nextTrack();
       return;
     }
     const song = state.pendingSong;
     if (!song) {
+      dispatch({ type: 'SET_PENDING_NEXT', payload: false });
       dispatch({ type: 'CLEAR_SPEECH' });
       return;
     }
+    dispatch({ type: 'SET_PENDING_NEXT', payload: false });
     dispatch({ type: 'SET_PENDING_SONG', payload: null });
     dispatch({ type: 'CLEAR_SPEECH' });
     let idx = song.playlist_index ?? -1;
     const songs = state.playlist.songs;
-    // Validate playlist_index
     if (idx < 0 || idx >= songs.length) idx = -1;
-    // Fallback: search by netease_id
     if (idx < 0 && song.netease_id) idx = songs.findIndex(s => String(s.netease_id) === String(song.netease_id));
-    // Last resort: match by title + artist
     if (idx < 0) idx = songs.findIndex(s => s.title === song.title && s.artist === song.artist);
     if (idx >= 0) {
       audioActions.loadSong(idx);
       setTimeout(() => audioActions.play(), 200);
     } else if (song.netease_id) {
-      const ns = { title: song.title, artist: song.artist, netease_id: song.netease_id, source: 'netease', cover: song.cover_url || '', tags: [], path: '' };
+      const ns = { title: song.title, artist: song.artist, netease_id: song.netease_id, source: 'netease', cover: song.cover_url || '', album: song.album_name || '', cover_url: song.cover_url || '', tags: [], path: '' };
       const newSongs = [...state.playlist.songs, ns];
       dispatch({ type: 'SET_PLAYLIST', payload: { songs: newSongs, current_index: state.playlist.current_index } });
       idx = newSongs.length - 1;
@@ -1421,12 +1822,14 @@ function App() {
     } else {
       audioActions.nextTrack();
     }
-  }, [state.pendingSong, state.playlist.songs, state.pendingNext, audioActions]);
+  }, [state.pendingSong, state.playlist.songs, state.pendingNext, audioActions, cancelTransitionFallback]);
 
   const handleTtsEnd = useCallback(() => {
+    cancelTransitionFallback();
+    dispatch({ type: 'SET_DJ_TALKING', payload: false });
     dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
     loadPendingSong();
-  }, [loadPendingSong]);
+  }, [loadPendingSong, cancelTransitionFallback]);
 
   const tts = useTTS(state, dispatch, handleTtsEnd);
   const { fetchLyrics } = useLyrics(state, dispatch);
@@ -1435,28 +1838,28 @@ function App() {
   useStatsTicker(state.isPlaying, state.playlist);
   useWeather(dispatch);
 
-  // Init
   useEffect(() => {
     (async () => {
       try { const s = await api('/api/status'); } catch (e) {}
       try { const pl = await api('/api/playlist'); dispatch({ type: 'SET_PLAYLIST', payload: pl }); } catch (e) {}
       const saved = localStorage.getItem('dj_activity') || '';
       if (saved) dispatch({ type: 'SET_USER_ACTIVITY', payload: saved });
-      // Load mode first
+      const savedVoiceMode = localStorage.getItem('dj_voice_mode');
+      if (savedVoiceMode === 'realtime' || savedVoiceMode === 'tts') {
+        dispatch({ type: 'SET_VOICE_MODE', payload: savedVoiceMode });
+      }
+      dispatch({ type: 'SET_MODE', payload: 'dj' });
       let mode = 'dj';
       try { const m = await api('/api/mode'); mode = (m && m.mode) ? m.mode : 'dj'; } catch (e) {}
       dispatch({ type: 'SET_MODE', payload: mode });
 
-      // Auto-start DJ: play saved song + greet, no forced transition
       setTimeout(async () => {
         if (mode !== 'dj') return;
         const pl = await api('/api/playlist').catch(() => ({ songs: [], current_index: -1 }));
         if (pl.songs && pl.songs.length > 0 && pl.current_index >= 0) {
-          audioActions.loadSong(pl.current_index);
-          setTimeout(() => audioActions.play(), 300);
+          const actions = audioActionsRef.current;
+          if (actions) { actions.loadSong(pl.current_index); setTimeout(() => actions.play(), 300); }
         }
-        // Greet after song starts — but don't force transition
-        // Let the natural transition trigger (12s before song end) handle it
         setTimeout(async () => {
           try {
             const greet = await api('/api/agent/greet', 'POST', { weather: {} });
@@ -1467,13 +1870,26 @@ function App() {
               dispatch({ type: 'SET_SPEECH', payload: { text: gText, segue: null, reason: '', showReactions: false } });
               tts.speak(greet.say, greet.mood || 'chill');
             }
-          } catch (e) {
-            // greet failed silently — not critical
-          }
+          } catch (e) {}
         }, 800);
       }, 800);
     })();
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (transitionTimerRef.current) {
+        clearTimeout(transitionTimerRef.current);
+        transitionTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      stopChatVoice();
+    };
+  }, [stopChatVoice]);
 
   // (Lyrics fetching is handled by useLyrics hook, no duplicate needed)
 
@@ -1482,197 +1898,268 @@ function App() {
     if (state.isPlaying) viz.init();
   }, [state.isPlaying]);
 
-  // ── Transition ──
-  const doTransition = useCallback(async () => {
-    dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
-    dispatch({ type: 'SET_APP_STATE', payload: 'speaking' });
-    const songs = state.playlist.songs;
-    const cur = state.playlist.current_index;
-    if (songs.length < 2 || state.currentMode === 'normal') { dispatch({ type: 'SET_APP_STATE', payload: 'idle' }); return; }
-    try {
-      const chatCtx = (state.chatHistory || []).slice(-4).map(m => `${m.role === 'user' ? '听众' : '我'}: ${m.content}`).join('\n');
-      const r = await api('/api/agent/transition', 'POST', {
-        current_song: songs[cur] || {},
-        weather: { description: state.weather.icon, temp: state.weather.temp },
-        history: state.recentTransitions || [],
-        user_activity: state.userActivity || '',
-        chat_context: chatCtx,
-      });
-      if (r.say) {
-        const displayText = (r.say || '').replace(/\[em:[^\]]*\]/g, '');
-        dispatch({ type: 'SET_SPEECH', payload: { text: displayText, segue: r.segue, reason: r.reason, showReactions: true } });
-        if (r.mood) dispatch({ type: 'SET_MOOD', payload: r.mood });
-        dispatch({ type: 'ADD_TRANSITION', payload: displayText });
-        if (r.selected_song && r.action === 'play_selected') dispatch({ type: 'SET_PENDING_SONG', payload: r.selected_song });
-        tts.speak(r.say, r.mood);
-        // Timeout fallback: if TTS onEnd never fires, force skip to next track
-        const timeoutMs = (r.say?.length || 10) * 350 + 8000;
-        const fallbackIdx = (cur + 1) % songs.length;
-        setTimeout(() => {
-          // Check if TTS onEnd already handled it
-          if (stateRef.current.pendingSong || stateRef.current.pendingNext) return;
-          dispatch({ type: 'SET_DJ_TALKING', payload: false });
-          dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
-          dispatch({ type: 'CLEAR_SPEECH' });
-          if (audioActionsRef.current) {
-            audioActionsRef.current.loadSong(fallbackIdx);
-            setTimeout(() => audioActionsRef.current.play(), 200);
-          }
-        }, timeoutMs);
-      } else {
-        // No speech, just switch song
-        dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
-        audioActions.nextTrack();
-      }
-    } catch (e) {
-      const ns = songs[(cur + 1) % songs.length] || {};
-      const artist = ns.artist || '';
-      const fallbacks = ['接下来这首，很适合现在的心情。', '继续听歌，这首你应该会喜欢。', artist ? `${artist}来了，这首不错。` : '接一首好听的。'];
-      const say = fallbacks[Math.floor(Math.random() * fallbacks.length)];
-      dispatch({ type: 'SET_SPEECH', payload: { text: say, segue: null, reason: '', showReactions: false } });
-      tts.speak(say, 'chill');
-      // Timeout fallback
-      setTimeout(() => {
+// Transition
+const doTransition = useCallback(async () => {
+  cancelTransitionFallback();
+  const transitionToken = transitionTokenRef.current;
+  dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
+  dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+  dispatch({ type: 'SET_PENDING_SONG', payload: null });
+  if (state.appState !== 'idle' || state.isDjTalking) return;
+  const songs = state.playlist.songs;
+  const cur = state.playlist.current_index;
+  if (songs.length < 2 || state.currentMode === 'normal') { dispatch({ type: 'SET_APP_STATE', payload: 'idle' }); return; }
+  dispatch({ type: 'SET_APP_STATE', payload: 'speaking' });
+  try {
+    const chatCtx = (state.chatHistory || []).slice(-4).map(m => `${m.role === 'user' ? '用户' : 'DJ'}：${m.content}`).join('\n');
+    const r = await api('/api/agent/transition', 'POST', {
+      current_song: songs[cur] || {},
+      weather: {
+        description: state.weather.description || '',
+        icon: state.weather.iconCode || '',
+        temp: state.weather.temp,
+      },
+      history: state.recentTransitions || [],
+      user_activity: state.userActivity || '',
+      chat_context: chatCtx,
+    });
+    if (stateRef.current.appState !== 'speaking') return;
+    if (r.say) {
+      const displayText = (r.say || '').replace(/\[em:[^\]]*\]/g, '');
+      dispatch({ type: 'SET_SPEECH', payload: { text: displayText, segue: r.segue, reason: r.reason, showReactions: true } });
+      if (r.mood) dispatch({ type: 'SET_MOOD', payload: r.mood });
+      dispatch({ type: 'ADD_TRANSITION', payload: displayText });
+      if (r.selected_song && r.action === 'play_selected') dispatch({ type: 'SET_PENDING_SONG', payload: r.selected_song });
+      tts.speak(r.say, r.mood);
+      const timeoutMs = (r.say?.length || 10) * 350 + 8000;
+      const fallbackIdx = (cur + 1) % songs.length;
+      scheduleTransitionFallback(transitionToken, timeoutMs, () => {
+        if (stateRef.current.pendingSong || stateRef.current.pendingNext) return;
+        dispatch({ type: 'SET_PENDING_SONG', payload: null });
+        dispatch({ type: 'SET_PENDING_NEXT', payload: false });
         dispatch({ type: 'SET_DJ_TALKING', payload: false });
         dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
-        audioActions.nextTrack();
-      }, 6000);
-    }
-  }, [state.playlist, state.currentMode, state.chatHistory, state.recentTransitions, state.userActivity, state.weather, tts]);
-
-  // ── Chat (with voice TTS) ──
-  const sendChat = useCallback(async (msg) => {
-    dispatch({ type: 'SET_APP_STATE', payload: 'chatting' });
-    let audioChunks = [];
-    let audioPlayer = null;
-    const playNextChatAudio = () => {
-      if (audioChunks.length === 0) return;
-      const url = audioChunks.shift();
-      audioPlayer = new Audio(url);
-      audioPlayer.onended = () => {
-        URL.revokeObjectURL(url);
-        if (audioChunks.length > 0) playNextChatAudio();
-        else audioPlayer = null;
-      };
-      audioPlayer.onerror = () => { URL.revokeObjectURL(url); if (audioChunks.length > 0) playNextChatAudio(); };
-      audioPlayer.play().catch(() => {});
-    };
-
-    try {
-      const curSong = state.currentSong || {};
-      const resp = await fetch('/api/agent/chat/voice', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, history: state.chatHistory || [], current_song: { title: curSong.title || '', artist: curSong.artist || '' } })
+        dispatch({ type: 'CLEAR_SPEECH' });
+        dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
+        if (audioActionsRef.current) {
+          audioActionsRef.current.loadSong(fallbackIdx);
+          setTimeout(() => audioActionsRef.current.play(), 200);
+        }
       });
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder(); let buffer = ''; let fullText = '';
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n'); buffer = lines.pop() || '';
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.type === 'token') {
-                fullText += data.text;
-              } else if (data.type === 'audio' && data.data) {
-                // Decode base64 audio chunk and queue for playback
-                const bin = atob(data.data);
-                const bytes = new Uint8Array(bin.length);
-                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-                const blob = new Blob([bytes], { type: 'audio/mpeg' });
-                audioChunks.push(URL.createObjectURL(blob));
-                if (!audioPlayer || audioPlayer.ended) playNextChatAudio();
-              }
-            } catch (e) {}
+    } else {
+      dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
+      audioActions.nextTrack();
+    }
+  } catch (e) {
+    const ns = songs[(cur + 1) % songs.length] || {};
+    const fallbacks = [
+      '这首歌的情绪刚刚好，我们顺着感觉继续。',
+      '我先把节奏接稳，下一首会更顺。',
+      '如果你想换个味道，随时告诉我。',
+      '我来切一首更贴合现在氛围的。'
+    ];
+    const say = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+    dispatch({ type: 'SET_SPEECH', payload: { text: say, segue: null, reason: '', showReactions: false } });
+    tts.speak(say, 'chill');
+    scheduleTransitionFallback(transitionToken, 6000, () => {
+      dispatch({ type: 'SET_PENDING_SONG', payload: null });
+      dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+      dispatch({ type: 'SET_DJ_TALKING', payload: false });
+      dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
+      dispatch({ type: 'CLEAR_SPEECH' });
+      dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
+      audioActions.nextTrack();
+    });
+  }
+}, [state.playlist, state.currentMode, state.chatHistory, state.recentTransitions, state.userActivity, state.weather, state.appState, state.isDjTalking, tts, cancelTransitionFallback, scheduleTransitionFallback]);
+
+// Chat (with voice TTS)
+const sendChat = useCallback(async (msg) => {
+  stopChatVoice();
+  tts.stop();
+  dispatch({ type: 'CLEAR_SPEECH' });
+  dispatch({ type: 'SET_APP_STATE', payload: 'chatting' });
+  const sessionId = chatVoiceRef.current.sessionId;
+  const st = chatVoiceRef.current;
+  st.queue = [];
+  st.player = null;
+  st.streamDone = false;
+  st.waiters = [];
+
+  try {
+    const curSong = state.currentSong || {};
+    const resp = await fetch('/api/agent/chat/voice', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: msg,
+        history: state.chatHistory || [],
+        voice_mode: state.voiceMode || 'realtime',
+        current_song: { title: curSong.title || '', artist: curSong.artist || '' }
+      })
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder(); let buffer = ''; let fullText = '';
+    while (true) {
+      if (chatVoiceRef.current.sessionId !== sessionId) {
+        try { await reader.cancel(); } catch (e) {}
+        return;
+      }
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n'); buffer = lines.pop() || '';
+      let lastEvent = '';
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          lastEvent = line.slice(7).trim();
+          continue;
+        }
+        if (line.startsWith('data: ')) {
+          if (lastEvent === 'done') {
+            markChatVoiceStreamDone(sessionId);
+            lastEvent = '';
+            continue;
           }
+          try {
+            const raw = line.slice(6).trim();
+            if (!raw) {
+              lastEvent = '';
+              continue;
+            }
+            const data = JSON.parse(raw);
+            if (data.type === 'token') {
+              fullText += data.text;
+            } else if (data.type === 'audio' && data.data) {
+              enqueueChatVoiceChunk(sessionId, data.data);
+            }
+          } catch (e) {}
+          lastEvent = '';
         }
       }
-      const actions = parseActions(fullText);
-      const cleanText = cleanActionText(fullText) || fullText;
-      dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: cleanText } });
-      if (actions.length > 0) await executeActions(actions);
-    } catch (e) {
-      dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: '聊天服务暂时不可用。' } });
     }
-    dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
-  }, [state.chatHistory, state.currentSong, executeActions]);
+    markChatVoiceStreamDone(sessionId);
+    const actions = parseActions(fullText);
+    const cleanText = cleanActionText(fullText) || fullText;
+    dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: cleanText } });
+    await waitForChatVoiceDrain(sessionId);
+    if (chatVoiceRef.current.sessionId !== sessionId) return;
+    if (actions.length > 0) await executeActions(actions);
+  } catch (e) {
+    if (chatVoiceRef.current.sessionId === sessionId) {
+      dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: '刚刚语音回复有点卡，我先用文字接上。' } });
+    }
+  } finally {
+    markChatVoiceStreamDone(sessionId);
+    if (chatVoiceRef.current.sessionId === sessionId) {
+      dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
+    }
+  }
+}, [state.chatHistory, state.currentSong, state.voiceMode, executeActions, stopChatVoice, tts.stop, enqueueChatVoiceChunk, waitForChatVoiceDrain, markChatVoiceStreamDone]);
 
-  // ── Execute Chat Actions ──
-  const executeActions = useCallback(async (actions) => {
-    for (const act of actions) {
-      switch (act.type) {
-        case 'skip':
-          tts.stop();
-          dispatch({ type: 'CLEAR_SPEECH' });
-          dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
-          dispatch({ type: 'SET_PENDING_SONG', payload: null });
-          audioActions.nextTrack();
-          break;
-        case 'search':
-          setSearchInitKw(act.arg || '');
-          setModal(m => ({ ...m, search: true }));
-          break;
-        case 'play': {
-          const parts = act.arg.split('—');
-          const pTitle = (parts[0] || '').trim();
-          const pArtist = (parts[1] || '').trim();
-          let found = false;
-          for (let i = 0; i < state.playlist.songs.length; i++) {
-            const s = state.playlist.songs[i];
-            if ((pTitle && s.title && s.title.includes(pTitle)) || (pArtist && s.artist && s.artist.includes(pArtist))) {
-              audioActions.loadSong(i); audioActions.play(); found = true; break;
-            }
+// Execute Chat Actions
+const executeActions = useCallback(async (actions) => {
+  for (const act of actions) {
+    switch (act.type) {
+      case 'skip':
+        cancelTransitionFallback();
+        tts.stop();
+        dispatch({ type: 'CLEAR_SPEECH' });
+        dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
+        dispatch({ type: 'SET_PENDING_SONG', payload: null });
+        dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+        audioActions.nextTrack();
+        break;
+      case 'search':
+        setSearchInitKw(act.arg || '');
+        setModal(m => ({ ...m, search: true }));
+        break;
+      case 'play': {
+        const parts = act.arg.split('—');
+        const pTitle = (parts[0] || '').trim();
+        const pArtist = (parts[1] || '').trim();
+        let selectedSong = null;
+        for (let i = 0; i < state.playlist.songs.length; i++) {
+          const s = state.playlist.songs[i];
+          if ((pTitle && s.title && s.title.includes(pTitle)) || (pArtist && s.artist && s.artist.includes(pArtist))) {
+            cancelTransitionFallback();
+            audioActions.loadSong(i);
+            audioActions.play();
+            selectedSong = { title: s.title || '', artist: s.artist || '' };
+            break;
           }
-          if (!found) {
-            try {
-              const sr = await api('/api/netease/search', 'POST', { keywords: (pTitle + ' ' + pArtist).trim(), limit: 5 });
-              const results = sr?.result?.songs || [];
-              if (results.length > 0) {
-                const song = results[0];
-                const ns = { title: song.name, artist: (song.artists || song.ar || []).map(a => a.name).join(' / '), netease_id: String(song.id), source: 'netease', cover: song.al?.picUrl || '', tags: [], path: '' };
-                playDirectSong(ns);
-                dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: `来了——${ns.artist}的《${ns.title}》` } });
-                tts.speak(`好，${ns.artist}的${ns.title}，安排上了。`, 'chill');
-              }
-            } catch (e) {}
-          }
-          break;
         }
-        case 'recommend': {
-          const rParts = act.arg.split('—');
-          const rTitle = (rParts[0] || '').trim();
-          const rArtist = (rParts[1] || '').trim();
-          if (rTitle) {
-            try {
-              const sr = await api('/api/netease/search', 'POST', { keywords: rTitle + ' ' + rArtist, limit: 1 });
-              const results = sr?.result?.songs || [];
-              if (results.length > 0) {
-                const s = results[0];
-                setRecCards(prev => [...prev, { title: s.name, artist: (s.artists || s.ar || []).map(a => a.name).join(' / '), netease_id: String(s.id), cover: s.al?.picUrl || '', reason: 'AI DJ 推荐' }]);
-              } else {
-                setRecCards(prev => [...prev, { title: rTitle, artist: rArtist, reason: 'AI DJ 推荐' }]);
-              }
-            } catch (e) {
+        if (!selectedSong) {
+          try {
+            const sr = await api('/api/netease/search', 'POST', { keywords: (pTitle + ' ' + pArtist).trim(), limit: 5 });
+            const results = sr?.result?.songs || [];
+            if (results.length > 0) {
+              const song = results[0];
+              const ns = {
+                title: song.name,
+                artist: (song.artists || song.ar || []).map(a => a.name).join(' / '),
+                netease_id: String(song.id),
+                source: 'netease',
+                cover: song.al?.picUrl || '',
+                cover_url: song.al?.picUrl || '',
+                album: song.al?.name || '',
+                tags: [],
+                path: ''
+              };
+              playDirectSong(ns);
+              selectedSong = ns;
+            }
+          } catch (e) {}
+        }
+        if (selectedSong) {
+          const artistLabel = selectedSong.artist || '未知歌手';
+          const titleLabel = selectedSong.title || '未命名曲目';
+          const confirmText = `好，安排 ${artistLabel} 的《${titleLabel}》。`;
+          dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: confirmText } });
+          tts.speak(confirmText, 'chill');
+        }
+        break;
+      }
+      case 'recommend': {
+        const rParts = act.arg.split('—');
+        const rTitle = (rParts[0] || '').trim();
+        const rArtist = (rParts[1] || '').trim();
+        if (rTitle) {
+          try {
+            const sr = await api('/api/netease/search', 'POST', { keywords: rTitle + ' ' + rArtist, limit: 1 });
+            const results = sr?.result?.songs || [];
+            if (results.length > 0) {
+              const s = results[0];
+              setRecCards(prev => [...prev, {
+                title: s.name,
+                artist: (s.artists || s.ar || []).map(a => a.name).join(' / '),
+                netease_id: String(s.id),
+                cover: s.al?.picUrl || '',
+                reason: 'AI DJ 推荐'
+              }]);
+            } else {
               setRecCards(prev => [...prev, { title: rTitle, artist: rArtist, reason: 'AI DJ 推荐' }]);
             }
+          } catch (e) {
+            setRecCards(prev => [...prev, { title: rTitle, artist: rArtist, reason: 'AI DJ 推荐' }]);
           }
-          break;
         }
-        case 'volume': {
-          const vol = parseInt(act.arg);
-          if (!isNaN(vol) && vol >= 0 && vol <= 100) dispatch({ type: 'SET_VOLUME', payload: vol / 100 });
-          break;
-        }
+        break;
+      }
+      case 'volume': {
+        const vol = parseInt(act.arg);
+        if (!isNaN(vol) && vol >= 0 && vol <= 100) dispatch({ type: 'SET_VOLUME', payload: vol / 100 });
+        break;
       }
     }
-  }, [state.playlist.songs, tts, audioActions]);
-
-  // ── Direct play ──
+  }
+}, [state.playlist.songs, tts, audioActions, cancelTransitionFallback]);
+  // Direct play
   const playDirectSong = useCallback((song) => {
+    cancelTransitionFallback();
+    dispatch({ type: 'SET_PENDING_SONG', payload: null });
+    dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+    dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
     dispatch({ type: 'SET_DIRECT_PLAY', payload: { direct: true, song } });
     const audio = audioRef.current;
     if (audio) {
@@ -1682,102 +2169,125 @@ function App() {
       audio.load();
       audioActions.play();
     }
-  }, []);
-
-  // ── Refresh playlist ──
+  }, [audioActions, cancelTransitionFallback]);
+  // Refresh playlist
   const refreshPlaylist = useCallback(async () => {
     try { const pl = await api('/api/playlist'); dispatch({ type: 'SET_PLAYLIST', payload: pl }); } catch (e) {}
   }, []);
-
-  // ── Delete song ──
+  // Delete song
   const deleteSong = useCallback(async (idx) => {
     try { await api(`/api/playlist/song/${idx}`, 'DELETE'); await refreshPlaylist(); } catch (e) {}
   }, [refreshPlaylist]);
-
-  // ── Reaction ──
+  // Reaction
   const handleReaction = useCallback(async (reaction) => {
     dispatch({ type: 'CLEAR_SPEECH' });
     if (state.playlist.current_index >= 0) {
       api('/api/agent/reaction', 'POST', { song_index: state.playlist.current_index, reaction }).catch(() => {});
     }
-    if (reaction === 'skip') tts.stop();
-  }, [state.playlist.current_index, tts]);
-
-  // ── Mode toggle ──
+    if (reaction === 'skip') {
+      cancelTransitionFallback();
+      stopChatVoice();
+      tts.stop();
+    }
+  }, [state.playlist.current_index, tts, cancelTransitionFallback, stopChatVoice]);
+  // Mode toggle
   const toggleMode = useCallback(async () => {
+    cancelTransitionFallback();
+    stopChatVoice();
+    tts.stop();
+    dispatch({ type: 'SET_PENDING_SONG', payload: null });
+    dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+    dispatch({ type: 'CLEAR_SPEECH' });
+    dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
     const newMode = state.currentMode === 'dj' ? 'normal' : 'dj';
     dispatch({ type: 'SET_MODE', payload: newMode });
     api('/api/mode', 'POST', { mode: newMode }).catch(() => {});
-  }, [state.currentMode]);
+  }, [state.currentMode, cancelTransitionFallback, stopChatVoice, tts]);
 
-  // ── View toggle ──
+  const toggleVoiceMode = useCallback(() => {
+    const nextMode = state.voiceMode === 'realtime' ? 'tts' : 'realtime';
+    dispatch({ type: 'SET_VOICE_MODE', payload: nextMode });
+    localStorage.setItem('dj_voice_mode', nextMode);
+  }, [state.voiceMode]);
+  // View toggle
   const toggleView = useCallback(() => {
     const newView = state.currentView === 'claudio' ? 'dj' : 'claudio';
     dispatch({ type: 'SET_VIEW', payload: newView });
   }, [state.currentView]);
-
-  // ── Keyboard ──
+  // Keyboard
   const kbActions = useMemo(() => ({
-    togglePlay: audioActions.togglePlay,
-    next: audioActions.nextTrack,
-    prev: audioActions.prevTrack,
+    togglePlay: uiAudioActions.togglePlay,
+    next: uiAudioActions.nextTrack,
+    prev: uiAudioActions.prevTrack,
     showImport: () => setModal(m => ({ ...m, import: true })),
     showNeteaseSearch: () => setModal(m => ({ ...m, search: true })),
     togglePlaylist: () => setPlaylistOpen(o => !o),
     closeAll: () => { setPlaylistOpen(false); setModal({ import: false, search: false, playlist: false, likes: false }); },
-  }), [audioActions]);
+  }), [uiAudioActions]);
   useKeyboardShortcuts(kbActions);
 
   return (
-    <div className="relative w-full h-screen overflow-hidden" style={{ background: '#050510' }}>
+    <div className="app-shell relative w-full h-screen overflow-hidden">
       <BackgroundEffects />
+      <div className="dj-grid-overlay absolute inset-0 pointer-events-none z-[1]"></div>
 
       <TopNav state={state} dispatch={dispatch} onToggleMode={toggleMode} onToggleView={toggleView}
         onTogglePlaylist={() => setPlaylistOpen(o => !o)} playlistOpen={playlistOpen}
         onSearch={() => setModal(m => ({ ...m, search: true }))} />
 
       {/* DJ View */}
-      <div className="fixed top-[52px] left-0 right-0 bottom-0 z-10 flex" style={{ display: state.currentView === 'dj' ? 'flex' : 'none' }}>
-        <PlayerCard state={state} dispatch={dispatch} audioActions={audioActions} viz={viz}
-          isDjTalking={state.isDjTalking} onTransition={doTransition} onReact={handleReaction} />
-        <div className="w-[400px] flex flex-col gap-4 p-4 overflow-hidden">
-          <ChatSection state={state} dispatch={dispatch} onSendChat={sendChat} ttsStop={tts.stop} />
-          <RecommendationCards cards={recCards}
-            onPlay={async (i) => {
-              const card = recCards[i];
-              try {
-                const sr = await api('/api/netease/search', 'POST', { keywords: (card.title || '') + ' ' + (card.artist || ''), limit: 1 });
-                const songs = sr?.result?.songs || [];
-                if (songs.length > 0) {
-                  const s = songs[0];
-                  playDirectSong({ title: s.name, artist: (s.artists || s.ar || []).map(a => a.name).join(' / '), netease_id: String(s.id), source: 'netease', cover: s.al?.picUrl || '', tags: [], path: '' });
-                }
-              } catch (e) {}
-            }}
-            onAdd={async (i) => {
-              const card = recCards[i];
-              try {
-                await api('/api/playlist/add', 'POST', { song: { source: 'netease', netease_id: card.netease_id || '', path: '', title: card.title || '', artist: card.artist || '', album: '', duration: 0, tags: [], cover: card.cover || '' } });
-                await refreshPlaylist();
-              } catch (e) {}
-            }} />
+      <div className="fixed top-16 left-0 right-0 bottom-0 z-10 p-2 lg:p-4" style={{ display: state.currentView === 'dj' ? 'block' : 'none' }}>
+        <div className="w-full h-full max-w-[1180px] mx-auto flex flex-col gap-3 lg:gap-4">
+          <div className="flex-[0.92] min-h-[340px]">
+            <PlayerCard state={state} dispatch={dispatch} audioActions={uiAudioActions} viz={viz}
+              isDjTalking={state.isDjTalking} onTransition={doTransition} onReact={handleReaction} />
+          </div>
+          <div className="flex-[1.08] min-h-0 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-3 lg:gap-4">
+            <ChatSection
+              state={state}
+              dispatch={dispatch}
+              onSendChat={sendChat}
+              ttsStop={tts.stop}
+              voiceMode={state.voiceMode}
+              onToggleVoiceMode={toggleVoiceMode}
+            />
+            <RecommendationCards cards={recCards}
+              onPlay={async (i) => {
+                const card = recCards[i];
+                try {
+                  const sr = await api('/api/netease/search', 'POST', { keywords: (card.title || '') + ' ' + (card.artist || ''), limit: 1 });
+                  const songs = sr?.result?.songs || [];
+                  if (songs.length > 0) {
+                    const s = songs[0];
+                    playDirectSong({ title: s.name, artist: (s.artists || s.ar || []).map(a => a.name).join(' / '), netease_id: String(s.id), source: 'netease', cover: s.al?.picUrl || '', tags: [], path: '' });
+                  }
+                } catch (e) {}
+              }}
+              onAdd={async (i) => {
+                const card = recCards[i];
+                try {
+                  await api('/api/playlist/add', 'POST', { song: { source: 'netease', netease_id: card.netease_id || '', path: '', title: card.title || '', artist: card.artist || '', album: '', duration: 0, tags: [], cover: card.cover || '' } });
+                  await refreshPlaylist();
+                } catch (e) {}
+              }} />
+          </div>
         </div>
       </div>
 
-      {/* Claudio View (placeholder) */}
-      <div className="fixed top-[52px] left-0 right-0 bottom-0 z-10" style={{ display: state.currentView === 'claudio' ? 'flex' : 'none' }}>
+            {/* Claudio View (placeholder) */}
+      <div className="fixed top-16 left-0 right-0 bottom-0 z-10 p-4" style={{ display: state.currentView === 'claudio' ? 'flex' : 'none' }}>
         <div className="flex-1 flex items-center justify-center">
-          <div className="glass rounded-3xl p-12 text-center">
-            <h2 className="text-2xl text-white mb-2">✨ Claudio View</h2>
-            <p className="text-gray-400">此视图正在重构中，请先使用 DJ 主界面。</p>
-            <button className="btn btn-grad mt-4" onClick={toggleView}>返回 DJ 主界面</button>
+          <div className="glass rounded-[28px] p-12 text-center max-w-[680px]">
+            <h2 className="text-2xl text-emerald-50 mb-2">Claudio 视图</h2>
+            <p className="text-emerald-100/65">这个视图还在打磨中，后面可以放角色卡片、历史记录或者更多控制面板。</p>
+            <button className="btn btn-grad mt-5" onClick={toggleView}>切回 DJ 视图</button>
           </div>
         </div>
       </div>
 
       {/* Playlist Slide */}
       <PlaylistSlide open={playlistOpen} songs={state.playlist.songs} currentIndex={state.playlist.current_index}
-        onPlay={i => { audioActions.loadSong(i); audioActions.play(); }}
+        onPlay={i => { uiAudioActions.loadSong(i); uiAudioActions.play(); }}
         onDelete={deleteSong} onClose={() => setPlaylistOpen(false)}
         onImport={() => setModal(m => ({ ...m, import: true }))}
         onSearch={() => setModal(m => ({ ...m, search: true }))}
@@ -1794,6 +2304,52 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+
+<script>
+(function() {
+  function showBootError(msg) {
+    if (document.getElementById('bootErrorOverlay')) return;
+    const box = document.createElement('div');
+    box.id = 'bootErrorOverlay';
+    box.style.position = 'fixed';
+    box.style.left = '16px';
+    box.style.right = '16px';
+    box.style.bottom = '16px';
+    box.style.zIndex = '9999';
+    box.style.padding = '12px 14px';
+    box.style.borderRadius = '10px';
+    box.style.border = '1px solid rgba(239,68,68,0.45)';
+    box.style.background = 'rgba(25, 5, 8, 0.92)';
+    box.style.color = '#fecaca';
+    box.style.fontFamily = 'Consolas, Menlo, monospace';
+    box.style.fontSize = '12px';
+    box.style.lineHeight = '1.5';
+    box.textContent = msg;
+    document.body.appendChild(box);
+  }
+
+  window.addEventListener('error', function(e) {
+    const text = e && e.message ? e.message : 'Unknown boot error';
+    showBootError('UI 启动失败: ' + text);
+  });
+
+  window.addEventListener('unhandledrejection', function(e) {
+    const reason = e && e.reason ? String(e.reason) : 'Unhandled Promise rejection';
+    showBootError('UI 启动失败: ' + reason);
+  });
+
+  setTimeout(function() {
+    const root = document.getElementById('root');
+    if (!root) {
+      showBootError('UI 启动失败: 缺少 #root 节点');
+      return;
+    }
+    if (!root.children || root.children.length === 0) {
+      showBootError('UI 未渲染。请按 Ctrl+F5 强制刷新，或重启后端再试。');
+    }
+  }, 2500);
+})();
 </script>
 
 <!-- Particle Background (non-React for performance) -->
@@ -1857,3 +2413,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
+
+
+

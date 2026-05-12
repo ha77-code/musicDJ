@@ -32,6 +32,7 @@ class CandidatePoolBuilder:
         weather_desc: str,
         discovery_songs: list[dict] | None = None,
         discovery_ratio: float = 0.7,
+        recent_title_artists: set | None = None,
     ) -> list[dict]:
         """Build a diverse candidate pool mixing local and discovery songs.
 
@@ -44,6 +45,7 @@ class CandidatePoolBuilder:
 
         # ── Score local playlist songs ──
         local_candidates = []
+        recent_ta = recent_title_artists or set()
         for i, song in enumerate(playlist):
             sid = str(song.get("netease_id") or song.get("path", ""))
             if sid == current_song_id:
@@ -51,6 +53,11 @@ class CandidatePoolBuilder:
             if sid in recently_played_ids:
                 continue
             if sid in skipped_ids:
+                continue
+            # Hard dedup by title+artist
+            sa = (song.get("title", "").strip().lower(),
+                  song.get("artist", "").strip().lower())
+            if sa[0] and sa[1] and sa in recent_ta:
                 continue
 
             taste = catalog_by_id.get(sid, {})
@@ -69,6 +76,11 @@ class CandidatePoolBuilder:
             for ds in discovery_songs:
                 sid = str(ds.get("netease_id", ""))
                 if sid == current_song_id or sid in recently_played_ids or sid in skipped_ids:
+                    continue
+                # Hard dedup by title+artist
+                sa = (ds.get("title", "").strip().lower(),
+                      ds.get("artist", "").strip().lower())
+                if sa[0] and sa[1] and sa in recent_ta:
                     continue
                 search_q = ds.get("search_query", "")
                 hint = f"为你发现 · {search_q}" if search_q else "新歌推荐"
@@ -143,6 +155,8 @@ class CandidatePoolBuilder:
                 "netease_id": song.get("netease_id", ""),
                 "path": song.get("path", ""),
                 "source": song.get("source", "local"),
+                "cover_url": song.get("cover", "") or song.get("cover_url", ""),
+                "album_name": song.get("album", ""),
                 "weight": round(weight, 2),
                 "play_count": pc,
                 "hint": hint,

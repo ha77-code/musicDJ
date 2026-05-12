@@ -36,8 +36,11 @@ app = Flask(__name__, static_folder=str(FRONTEND_DIR), static_url_path="")
 
 def load_json(path, default=None):
     if path.exists():
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[json] Failed to load {path}: {e}")
     return default if default is not None else {}
 
 
@@ -597,6 +600,7 @@ def api_audio():
     source = request.args.get("source", "local")
     netease_id = request.args.get("netease_id", "")
     proxy = request.args.get("proxy", "0") == "1"  # server-side streaming proxy
+    range_header = request.headers.get("Range")
 
     # Netease song: get streaming URL and redirect
     if source == "netease" and netease_id:
@@ -614,18 +618,31 @@ def api_audio():
             # Server-side proxy: more reliable, avoids CDN geo/CORS issues
             if proxy:
                 try:
-                    resp = requests.get(url, headers={
+                    proxy_headers = {
                         "User-Agent": "Mozilla/5.0",
                         "Referer": "https://music.163.com/",
-                    }, timeout=30, stream=True)
-                    if resp.status_code == 200:
+                    }
+                    if range_header:
+                        proxy_headers["Range"] = range_header
+
+                    resp = requests.get(url, headers=proxy_headers, timeout=30, stream=True)
+                    if resp.status_code in (200, 206):
                         content_type = resp.headers.get("Content-Type", "audio/mpeg")
+                        out_headers = {
+                            "Accept-Ranges": resp.headers.get("Accept-Ranges", "bytes"),
+                            "Cache-Control": "no-cache",
+                        }
+                        content_len = resp.headers.get("Content-Length")
+                        if content_len:
+                            out_headers["Content-Length"] = content_len
+                        content_range = resp.headers.get("Content-Range")
+                        if content_range:
+                            out_headers["Content-Range"] = content_range
+
                         return Response(resp.iter_content(chunk_size=65536),
+                                        status=resp.status_code,
                                         content_type=content_type,
-                                        headers={
-                                            "Accept-Ranges": "bytes",
-                                            "Cache-Control": "no-cache",
-                                        })
+                                        headers=out_headers)
                 except Exception as e:
                     print(f"[audio-proxy] Streaming proxy failed: {e}, falling back to redirect")
 
@@ -1119,9 +1136,13 @@ def api_agent_chat_voice():
     import threading as _threading
     import re as _re
 
-    data = request.get_json()
+    data = request.get_json() or {}
     message = data.get("message", "")
     chat_history = data.get("history", [])
+    voice_mode = str(data.get("voice_mode", "realtime")).lower()
+    if voice_mode not in {"realtime", "tts"}:
+        voice_mode = "realtime"
+    use_realtime_voice = voice_mode == "realtime"
 
     if not dj_brain or not message:
         return jsonify({"error": "DJ agent not ready"}), 503
@@ -1218,11 +1239,13 @@ def api_agent_chat_voice():
             yield f"event: done\ndata: \n\n"
             return
 
-        # Step 2: Try real-time voice API
+        # Step 2: Try real-time voice API (optional by request)
         rt_client = RealtimeVoiceClient(dj_brain.config)
         voice_ok = False
+        tried_realtime = False
 
-        if rt_client.check_available():
+        if use_realtime_voice and rt_client.check_available():
+            tried_realtime = True
             # Extract a condensed personality for the voice model
             voice_prompt = (
                 f"你是{personality['name']}，一个深夜电台DJ。"
@@ -1269,7 +1292,15 @@ def api_agent_chat_voice():
 
         # Step 3: Fallback to SSML streaming TTS
         if not voice_ok:
-            yield f"data: {json.dumps({'type': 'tts_fallback'}, ensure_ascii=False)}\n\n"
+            if tried_realtime:
+                yield f"data: {json.dumps({'type': 'tts_fallback'}, ensure_ascii=False)}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'tts_mode'}, ensure_ascii=False)}\n\n"
+
+            if not tts_provider or not tts_provider.check_available():
+                yield f"data: {json.dumps({'error': 'TTS not configured'}, ensure_ascii=False)}\n\n"
+                yield f"event: done\ndata: \n\n"
+                return
 
             # Use Phase 2 streaming TTS for the fallback
             chunk_queue = _queue.Queue()
