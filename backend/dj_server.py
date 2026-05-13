@@ -19,6 +19,73 @@ from agent.realtime_voice import RealtimeVoiceClient
 from agent.scheduler import DJScheduler
 from agent.tts_provider import TTSProvider
 
+
+# ── Intent detection ──────────────────────────────────
+
+def _has_music_intent(message: str) -> bool:
+    """Lightweight music-intent detection matching the frontend hasMusicIntent.
+
+    Returns True only when the message explicitly requests a music action
+    with a music object (song name, genre, language, mood, style).
+    Excludes job-hunting, confiding, "I want to hear you speak", etc."""
+    import re
+    if not message or not message.strip():
+        return False
+    msg = message.strip().lower()
+
+    # ── Anti-patterns: non-music contexts that happen to contain 找/听/想听 ──
+    non_music = [
+        r"找.{0,2}(工作|对象|人|男朋|女朋|房子|实习)",
+        r"听你说|听我说|听你讲|听你[的]?(意见|建议|看法|分析)|听说[^歌]",
+        r"我想听你[说讲]|想听你[的]?(意见|建议|看法|分析)",
+        r"^我?今天.{0,4}(好累|好烦|心情不好|焦虑|迷茫|不知道怎么办)",
+        r"你觉得.{0,6}(该|怎么办|怎么样)",
+        r"^(陪我|我想)聊",
+        r"^(怎么办|好难|我好[^想])",
+    ]
+    if any(re.search(p, msg) for p in non_music):
+        return False
+
+    # ── Explicit music commands: verb + music object ──
+    music_patterns = [
+        # 放/播 + target: 放周杰伦, 播放晴天, 放一首安静的
+        r"(放|播|播放)\s*[一]?\s*[首点]?\s*(.{0,20})",
+        # 来一首/来点 + music target
+        r"来[一首个点]\s*(.{0,20})",
+        # 搜/找 + song: 搜一下周杰伦, 找首歌
+        r"(搜|找)\s*[一]?\s*[下]?\s*(歌|曲|首|音乐|[^\s]{2,})",
+        # 推荐
+        r"推荐[一]?\s*[首下]?",
+        # 切/换: 切歌, 换一首, 换个风格
+        r"(切歌|换[一首个]|换风格)",
+        # 下一首/上一首/跳过
+        r"(下[一首个]|上[一首个]|跳过|next|skip)",
+        # 暂停/继续
+        r"(暂停|停一下|继续|继[续放]|pause|resume)",
+        # 听 + genre/language/style/mood: 听点日语的, 想听安静的, 听一首
+        r"(想?听|来点).{0,4}(歌|音乐|日语|韩语|英文|中文|粤语|轻松|安静|摇滚|电子|爵士|民谣|说唱|轻音乐|古典|后摇|氛围|R&B|hip.?hop|city.?pop|indie|pop)",
+        # 想听 + song name pattern: 想听xxx (at least a few chars of a song name)
+        r"想听\s*[^\s]{2,20}",
+        # English
+        r"\b(play|skip|next|search|recommend)\b",
+        # Volume control
+        r"(声音|音量).{0,4}(大|小|高|低|\d)",
+        r"(大|小)声[点一]",
+        # 想听什么 / 有什么歌
+        r"(有什么|有没有).{0,4}歌",
+        r"帮我.{0,4}(找|选|挑|搜|放).{0,4}歌",
+    ]
+    return any(re.search(p, msg) for p in music_patterns)
+
+
+def _clean_action_tags(text: str) -> str:
+    """Strip [[action]] and [[action:arg]] markers from text."""
+    import re
+    if not text:
+        return text
+    return re.sub(r'\[\[[a-z_]+\s*(?::\s*[^\]]*)?\]\]', '', text).strip()
+
+
 # ── Paths ──────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -908,6 +975,7 @@ def api_agent_transition():
     history = data.get("history", [])
     user_activity = data.get("user_activity", "")
     chat_context = data.get("chat_context", "")
+    scene = data.get("scene", "")
 
     # ── Normal mode: simple sequential, no AI ──
     if current_mode == "normal":
@@ -938,7 +1006,7 @@ def api_agent_transition():
 
     action, selected_song = dj_brain.think_transition(
         current_song, None, weather_data, history, user_activity, playlist,
-        chat_context=chat_context)
+        chat_context=chat_context, scene=scene)
 
     resp = {
         "say": action.say,
@@ -1086,6 +1154,13 @@ def api_agent_chat():
 
 重要：[[play:]]和[[search:]]都会搜索网易云的海量曲库，不是只搜你的本地歌单。想放什么直接说，我能找到。
 
+## 何时使用动作（极其重要）
+- 只有用户明确表达了音乐操作意图时，才输出动作标记。
+- 音乐操作意图包括：放歌、来一首、推荐、搜歌、切歌、换个风格、换一首、音量、暂停、继续、播放、下一首。
+- 普通闲聊时——比如用户说"今天好累""你觉得这个事咋办""陪我聊会儿""心情不好"——你只聊天，不用加任何动作标记。
+- 你不是销售型推荐机器人。你可以聊音乐话题，但不要把每次对话都拐到推歌上去。
+- 不要偷偷加动作标记。如果用户只是倾诉、闲聊、问建议，你就好好聊天。
+
 ## 说话方式
 - 像跟老朋友深夜连麦聊天，不是播新闻
 - 用语气词：嗯、嘿、诶、啧、嘶、害、说实话、讲真
@@ -1099,9 +1174,11 @@ def api_agent_chat():
 
 ## 示例
 用户："切歌" → 你："好嘞，这首差不多了，换一首更有感觉的。[[skip]]"
-用户："搜一下周杰伦的晴天" → 你："晴天啊，经典中的经典！我帮你搜。[search:周杰伦 晴天]"
-用户："放G.E.M.邓紫棋的龙卷风" → 你："龙卷风，你最喜欢的邓紫棋！马上安排。[play:龙卷风—G.E.M.邓紫棋]"
-用户："推荐一首适合现在听的歌" → 你："现在在下雨，半夜了…来首LANY的吧，超级适合。[recommend:ILYSB—LANY]" """
+用户："搜一下周杰伦的晴天" → 你："晴天啊，经典中的经典！我帮你搜。[[search:周杰伦 晴天]]"
+用户："放G.E.M.邓紫棋的龙卷风" → 你："龙卷风，你最喜欢的邓紫棋！马上安排。[[play:龙卷风—G.E.M.邓紫棋]]"
+用户："推荐一首适合现在听的歌" → 你："现在在下雨，半夜了…来首LANY的吧，超级适合。[[recommend:ILYSB—LANY]]"
+用户："今天好烦" → 你："怎么了？说说看。我这儿随时听着。"（不加任何动作标记）
+用户："你觉得我该辞职吗" → 你："害，这种事确实难决定……不过不管你选什么，我的歌都在这儿陪你。"（不加任何动作标记）"""
 
     system_prompt += """
 
@@ -1111,6 +1188,8 @@ def api_agent_chat():
 - Never skip or reject a song because it is Japanese, Korean, English, or multilingual.
 - Preserve original song titles and artist names exactly in action tags.
 """
+
+    user_music_intent = _has_music_intent(message)
 
     def generate():
         full_text = ""
@@ -1122,7 +1201,8 @@ def api_agent_chat():
                     return
                 full_text += token
                 yield f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n"
-            yield f"event: done\ndata: {json.dumps({'full_text': full_text}, ensure_ascii=False)}\n\n"
+            display_text = _clean_action_tags(full_text) if not user_music_intent else full_text
+            yield f"event: done\ndata: {json.dumps({'full_text': full_text, 'cleaned_text': display_text, 'no_music_intent': not user_music_intent}, ensure_ascii=False)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
 
@@ -1198,7 +1278,15 @@ def api_agent_chat_voice():
 - [[skip]] — 切到下一首歌
 - [[search:关键词]] — 搜索歌曲
 - [[play:歌名—歌手]] — 直接播放指定歌曲
+- [[recommend:歌名—歌手]] — 推荐一首歌
 - [[volume:80]] — 调整音量（0-100）
+
+## 何时使用动作（极其重要）
+- 只有用户明确表达了音乐操作意图时，才输出动作标记。
+- 音乐操作意图包括：放歌、来一首、推荐、搜歌、切歌、换个风格、换一首、音量、暂停、继续、播放、下一首。
+- 普通闲聊时——比如用户说"今天好累""你觉得这个事咋办""陪我聊会儿""心情不好"——你只聊天，不用加任何动作标记。
+- 你不是销售型推荐机器人。你可以聊音乐话题，但不要把每次对话都拐到推歌上去。
+- 不要偷偷加动作标记。如果用户只是倾诉、闲聊、问建议，你就好好聊天。
 
 ## 说话方式
 - 像跟老朋友深夜连麦聊天，不是播新闻
@@ -1229,6 +1317,8 @@ def api_agent_chat_voice():
 - Preserve original song titles and artist names exactly in action tags.
 """
 
+    user_has_music_intent = _has_music_intent(message)
+
     def generate():
         # Step 1: DeepSeek generates full response
         full_text = ""
@@ -1240,7 +1330,9 @@ def api_agent_chat_voice():
                     return
                 full_text += token
                 yield f"data: {json.dumps({'type': 'token', 'text': token}, ensure_ascii=False)}\n\n"
-            yield f"event: text_done\ndata: {json.dumps({'full_text': full_text}, ensure_ascii=False)}\n\n"
+            # If user has no music intent, send cleaned text alongside raw
+            display_text = _clean_action_tags(full_text) if not user_has_music_intent else full_text
+            yield f"event: text_done\ndata: {json.dumps({'full_text': full_text, 'cleaned_text': display_text, 'no_music_intent': not user_has_music_intent}, ensure_ascii=False)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
             return
@@ -1250,7 +1342,7 @@ def api_agent_chat_voice():
             return
 
         # Strip action markers for voice synthesis
-        clean_for_voice = _re.sub(r'\[\[\w+(?::[^\]]*)?\]\]', '', full_text).strip()
+        clean_for_voice = _clean_action_tags(full_text) if not user_has_music_intent else _re.sub(r'\[\[\w+(?::[^\]]*)?\]\]', '', full_text).strip()
         clean_for_voice = _re.sub(r'\[em:([^\]]+)\]', r'\1', clean_for_voice).strip()
 
         if not clean_for_voice:
@@ -1357,6 +1449,7 @@ def api_agent_transition_stream():
     history = data.get("history", [])
     user_activity = data.get("user_activity", "")
     chat_context = data.get("chat_context", "")
+    scene = data.get("scene", "")
 
     if not dj_brain:
         return jsonify({"error": "DJ agent not ready"}), 503
@@ -1367,7 +1460,7 @@ def api_agent_transition_stream():
     def generate():
         for event in dj_brain.think_transition_stream(
                 current_song, None, weather_data, history, user_activity, playlist,
-                chat_context=chat_context):
+                chat_context=chat_context, scene=scene):
             if event["type"] == "token":
                 yield f"data: {json.dumps({'token': event['text']}, ensure_ascii=False)}\n\n"
             elif event["type"] == "done":

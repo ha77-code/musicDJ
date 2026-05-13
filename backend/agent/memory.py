@@ -173,6 +173,80 @@ class DJMemory:
             ).fetchall()
         return [r["song_artist"] for r in rows]
 
+    # ── Aggregated skip / feedback queries (for runtime taste) ──
+
+    def get_all_skipped_ids(self, limit: int = 100) -> list[str]:
+        """Return deduplicated song_ids that were skipped, from both
+        transition_log.was_skipped and song_interaction.reaction='skip'."""
+        ids = set()
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT next_song_id FROM transition_log "
+                "WHERE was_skipped=1 AND next_song_id IS NOT NULL "
+                "ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+            for r in rows:
+                sid = r["next_song_id"]
+                if sid:
+                    ids.add(str(sid))
+            rows2 = conn.execute(
+                "SELECT song_id FROM song_interaction "
+                "WHERE reaction='skip' "
+                "ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+            for r in rows2:
+                sid = r["song_id"]
+                if sid:
+                    ids.add(str(sid))
+        return list(ids)
+
+    def get_song_recent_feedback(self, song_id: str, days: int = 7) -> dict:
+        """Return recent feedback summary for a song.
+        Checks both transition_log and song_interaction tables.
+        Returns {'skipped': bool, 'liked': bool, 'skip_count': int, 'like_count': int}."""
+        if not song_id:
+            return {"skipped": False, "liked": False, "skip_count": 0, "like_count": 0}
+        sid = str(song_id)
+        result = {"skipped": False, "liked": False, "skip_count": 0, "like_count": 0}
+        with self._connect() as conn:
+            t_skip = conn.execute(
+                "SELECT COUNT(*) FROM transition_log "
+                "WHERE next_song_id=? AND was_skipped=1 "
+                "AND timestamp >= datetime('now','localtime',?)",
+                (sid, f"-{days} days")
+            ).fetchone()
+            if t_skip:
+                result["skip_count"] = t_skip[0]
+                result["skipped"] = t_skip[0] > 0
+            t_like = conn.execute(
+                "SELECT COUNT(*) FROM transition_log "
+                "WHERE next_song_id=? AND user_reaction='like' "
+                "AND timestamp >= datetime('now','localtime',?)",
+                (sid, f"-{days} days")
+            ).fetchone()
+            if t_like:
+                result["like_count"] = t_like[0]
+                result["liked"] = t_like[0] > 0
+            si_skip = conn.execute(
+                "SELECT COUNT(*) FROM song_interaction "
+                "WHERE song_id=? AND reaction='skip' "
+                "AND timestamp >= datetime('now','localtime',?)",
+                (sid, f"-{days} days")
+            ).fetchone()
+            if si_skip and si_skip[0] > 0:
+                result["skip_count"] += si_skip[0]
+                result["skipped"] = True
+            si_like = conn.execute(
+                "SELECT COUNT(*) FROM song_interaction "
+                "WHERE song_id=? AND reaction IN ('like','listen_full','repeat') "
+                "AND timestamp >= datetime('now','localtime',?)",
+                (sid, f"-{days} days")
+            ).fetchone()
+            if si_like and si_like[0] > 0:
+                result["like_count"] += si_like[0]
+                result["liked"] = True
+        return result
+
     # ── Personality ──
 
     def get_personality_state(self) -> dict:

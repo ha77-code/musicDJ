@@ -12,6 +12,7 @@ from .music_discovery import MusicDiscovery
 from .prompts import (build_greeting_prompt, build_interjection_prompt,
                        build_selection_prompt, build_selection_user_prompt,
                        build_system_prompt, build_user_prompt)
+from .runtime_taste import RuntimeTasteScorer
 from .session import SessionManager
 from .song_picker import CandidatePoolBuilder
 from .taste_profile import (build_listener_state, build_taste_profile,
@@ -30,8 +31,10 @@ class DJBrain:
         self.context = DJContext(memory=self.memory)
         self.session = SessionManager(self.memory)
         self.parser = ActionParser()
+        self.taste_scorer = RuntimeTasteScorer(memory=self.memory)
         self.picker = CandidatePoolBuilder(
-            pool_size=config.get("agent", {}).get("pool_size", 15))
+            pool_size=config.get("agent", {}).get("pool_size", 15),
+            scorer=self.taste_scorer)
         self.discovery = MusicDiscovery(config)
         self._discovery_ratio = config.get("agent", {}).get("discovery_ratio", 0.7)
         self._current_transition_id = None
@@ -225,9 +228,7 @@ class DJBrain:
         period = time_info["period"]
         weather_piece = f"{weather_desc}的" if weather_desc else ""
         action.say = (
-            f"{chat_piece}{period}{weather_piece}氛围里，我想给你放 {next_artist} 的《{next_title}》。"
-            f"它不需要硬接上一首，自己进来就挺自然，"
-            f"像是把灯再调暗一点，让情绪慢慢落下来。"
+            f"{chat_piece}接下来给你放 {next_artist} 的《{next_title}》。"
             f"{lyric_piece}{album_piece}"
             "先听这一首，看看它会不会刚好撞上你现在的状态。"
         )
@@ -392,9 +393,7 @@ class DJBrain:
         period = time_info["period"]
         weather_piece = f"{weather_desc}的" if weather_desc else ""
         action.say = (
-            f"{chat_piece}{period}{weather_piece}氛围里，我想给你放 {next_artist} 的《{next_title}》。"
-            f"它不需要硬接上一首，自己进来就挺自然，"
-            f"像是把灯再调暗一点，让情绪慢慢落下来。"
+            f"{chat_piece}接下来给你放 {next_artist} 的《{next_title}》。"
             f"{lyric_piece}{album_piece}"
             "先听这一首，看看它会不会刚好撞上你现在的状态。"
         )
@@ -405,7 +404,8 @@ class DJBrain:
                           history: list[str] | None = None,
                           user_activity: str = "",
                          playlist: list[dict] | None = None,
-                         chat_context: str = "") -> tuple[DJAction, dict | None]:
+                         chat_context: str = "",
+                         scene: str = "") -> tuple[DJAction, dict | None]:
         """Generate a DJ transition. If playlist given, LLM selects next song.
         Returns (DJAction, selected_song_dict | None)."""
 
@@ -426,7 +426,7 @@ class DJBrain:
         if playlist and len(playlist) >= 2:
             return self._think_selection(
                 current_song, playlist, time_info, weather_str, weather_desc,
-                history, cur_str, chat_context=chat_context)
+                history, cur_str, chat_context=chat_context, scene=scene)
 
         # 3. Legacy mode: pre-determined next song
         if not next_song:
@@ -462,7 +462,7 @@ class DJBrain:
     # ── Internal: song selection ──
 
     def _think_selection(self, current_song, playlist, time_info, weather_str,
-                          weather_desc, history, cur_str, chat_context=""):
+                          weather_desc, history, cur_str, chat_context="", scene=""):
         # Build taste profile (cached per session)
         if not self._taste_profile_cache:
             self._taste_profile_cache = build_taste_profile()
@@ -491,14 +491,22 @@ class DJBrain:
                 if sid:
                     skipped_ids.append(sid)
 
+        # ── Detect scene / context flags ──
+        opening_or_explore = (scene == "opening") or any(
+            key in (chat_context or "")
+            for key in ("开台", "发散", "不要只从", "新东西", "探索", "开场",
+                        "想听点新的", "随便来点", "不一样", "没听过", "换换口味")
+        )
+        favor_familiar = any(
+            key in (chat_context or "")
+            for key in ("熟悉的", "常听", "红心", "喜欢的歌", "喜欢的感觉",
+                        "来点熟的")
+        )
+
         # ── Discover fresh songs from Netease ──
         discovery_songs = []
         try:
             search_taste = build_taste_profile_search()
-            opening_or_explore = any(
-                key in (chat_context or "")
-                for key in ("开台", "发散", "不要只从", "新东西", "探索")
-            )
             discovery_songs = self.discovery.discover(
                 taste_profile=search_taste,
                 context={
@@ -525,6 +533,8 @@ class DJBrain:
             weather_desc=weather_desc,
             discovery_songs=discovery_songs,
             discovery_ratio=max(self._discovery_ratio, 0.85) if opening_or_explore else self._discovery_ratio,
+            opening_or_explore=opening_or_explore,
+            favor_familiar=favor_familiar,
         )
 
         # Format for LLM
@@ -545,13 +555,13 @@ class DJBrain:
             "\n".join(history[-3:]) if history else "",
             skipped_str=skipped_str, artist_streak=artist_streak)
 
-        # Add source hint — strongly prefer discovery songs
+        # Add source hint — prefer discovery and exploration over familiar picks
         if discovery_count > 0:
             user_prompt += (
-                f"\n\n重要：候选池中有{discovery_count}首是刚从网易云为你搜到的新歌（标记🔍），"
-                f"{local_count}首是你歌单里的旧歌（标记🎵）。"
-                f"你的职责是电台DJ，不是歌单循环器——请优先从🔍新歌里选。"
-                f"只有在新歌都不合适的情况下，才从歌单里选。"
+                f"\n\n重要：候选池里有{discovery_count}首是刚从网易云为你搜到的新歌（标记🔍），"
+                f"以及探索区/半熟区的歌（标记🌿🎵），少量熟悉区的歌（标记⭐）。"
+                f"你的职责是电台DJ，不是歌单循环器——请优先从🔍和🌿区选歌。"
+                f"只有在新歌都不合适的情况下，才偶尔从⭐区里选一首。"
             )
 
         # CRITICAL: instruct LLM to avoid recently played songs
@@ -620,19 +630,11 @@ class DJBrain:
                 else:
                     action = None
 
-        # Fallback: pick best pool candidate, skipping recently played
+        # Fallback: pick best pool candidate using weighted random sampling
         if not action or not selected_song:
             if pool:
-                # Pick first song that isn't in recently played (by title+artist)
-                best = None
-                for candidate in pool:
-                    c_key = (candidate.get("title", "").strip().lower(),
-                             candidate.get("artist", "").strip().lower())
-                    if c_key not in recent_title_artists:
-                        best = candidate
-                        break
-                if best is None:
-                    best = pool[0]  # all songs are repeats, pick any
+                # Use weighted random fallback (prefers discovery > explore > semi > familiar)
+                best = self.picker.sample_fallback(pool, recent_title_artists)
 
                 selected_song = {"playlist_index": best["playlist_index"],
                                  "title": best["title"], "artist": best["artist"],
@@ -650,7 +652,7 @@ class DJBrain:
                 ]
                 action = DJAction(
                     say=random.choice(fallback_sayings),
-                    reason=f"fallback: pool candidate",
+                    reason=f"fallback: weighted-random pool candidate",
                     mood="chill", action="play_selected",
                     selected_song_index=best["pool_index"],
                     selected_song_title=best["title"],
@@ -666,13 +668,31 @@ class DJBrain:
                 llm_result = llm_result or {"text": "fallback", "model": "fallback",
                                             "latency_ms": 0, "method": "fallback"}
             else:
-                cur_idx = playlist.index(current_song) if current_song in playlist else -1
-                next_idx = (cur_idx + 1) % len(playlist) if playlist else 0
-                ns = playlist[next_idx] if playlist else {"title": "?", "artist": "?"}
+                # Pool is empty — use filtered playlist fallback (weighted random, not sequential)
+                fb = self.picker.pick_fallback_from_playlist(
+                    playlist, exclude_ids={cur_id} | set(recent_ids),
+                    exclude_title_artists=recent_title_artists,
+                    recent_title_artists=recent_title_artists)
+                if fb:
+                    ns = fb
+                    fb_idx = fb.get("_pidx", -1)
+                    selected_song = {"playlist_index": fb_idx,
+                                     "title": ns.get("title", "?"),
+                                     "artist": ns.get("artist", "?"),
+                                     "netease_id": ns.get("netease_id", ""),
+                                     "path": ns.get("path", ""),
+                                     "source": ns.get("source", "local"),
+                                     "cover_url": ns.get("cover_url", ""),
+                                     "album_name": ns.get("album", "")}
+                else:
+                    selected_song = None
+                    ns = playlist[0] if playlist else {"title": "?", "artist": "?"}
                 action = self.parser.fallback_action(
-                    current_song, ns, weather_desc, ns.get("tags", []),
+                    current_song, ns if not selected_song else selected_song,
+                    weather_desc, ns.get("tags", []),
                     recent_sayings=self._recent_sayings())
-                selected_song = None
+                if not selected_song:
+                    selected_song = None
 
         next_song_for_record = {
             "title": selected_song["title"] if selected_song else "?",
@@ -739,8 +759,16 @@ class DJBrain:
         if not pool:
             return None
 
-        # Select top N songs from the weighted pool
-        top_n = pool[:n_songs]
+        # Select N songs using weighted random (avoid sequential bias)
+        top_n = []
+        if pool:
+            # Use sample_fallback logic: prefer discovery > explore > semi > familiar
+            temp_pool = list(pool)
+            for _ in range(min(n_songs, len(temp_pool))):
+                picked = self.picker.sample_fallback(temp_pool)
+                if picked:
+                    top_n.append(picked)
+                    temp_pool = [c for c in temp_pool if c.get("pool_index") != picked.get("pool_index")]
         song_plan = []
         for i, s in enumerate(top_n):
             song_plan.append({
@@ -943,59 +971,47 @@ DJ outro：这组歌快结束时的收尾——自然过渡，不用太长。
         self._profile_context_cache = self.context.get_user_profile_context()
         return self._profile_context_cache
 
-    # ── Streaming (new) ──
+    # ── Streaming (delegates to standard think_transition) ──
 
     def think_transition_stream(self, current_song: dict, next_song: dict | None = None,
                                  weather_data: dict | None = None,
                                  history: list[str] | None = None,
                                  user_activity: str = "",
                                  playlist: list[dict] | None = None,
-                                 chat_context: str = ""):
-        """Streaming version of think_transition — yields tokens as they arrive."""
+                                 chat_context: str = "",
+                                 scene: str = ""):
+        """Streaming version — delegates to think_transition so the new picker,
+        RuntimeTasteScorer, bucket sampler, and scene-aware ratios are always used.
 
-        if not self._current_session_id:
-            self._current_session_id = self.session.start_session()
-            self._greeted_today = not self.context.is_first_today()
+        Maintains SSE-compatible yield shape (token events + done event).
+        Real per-token streaming can be re-added later once the streaming LLM
+        path also integrates _think_selection."""
+        # Delegate to the standard (non-streaming) path that uses _think_selection
+        action, selected_song = self.think_transition(
+            current_song=current_song,
+            next_song=next_song,
+            weather_data=weather_data,
+            history=history,
+            user_activity=user_activity,
+            playlist=playlist,
+            chat_context=chat_context,
+            scene=scene,
+        )
 
-        if user_activity:
-            self._user_activity = user_activity
-
-        if not next_song:
-            next_song = current_song
-
-        ctx = self.context.build_context_window(current_song, next_song, weather_data, history)
-        profile_context = self._get_profile_context()
-        system_prompt = build_system_prompt(
-            self.personality, ctx["taste_summary"], ctx["listener_state"],
-            profile_context=profile_context)
-        user_prompt = build_user_prompt(
-            ctx["time_str"], ctx["weather_str"],
-            ctx["current_song_str"], ctx["next_song_str"],
-            ctx["history_str"], ctx["tags"],
-            skipped_str=ctx.get("skipped_summary", ""),
-            artist_streak=ctx.get("artist_streak", ""))
-
-        # Stream tokens from LLM
-        full_text = ""
-        for token in self.llm.generate_stream(system_prompt, user_prompt):
-            if token is None:
-                # Stream failed, fall back to non-streaming
-                action, _ = self.think_transition(
-                    current_song, next_song, weather_data, history, user_activity)
-                yield {"type": "done", "action": action}
-                return
-            full_text += token
-            yield {"type": "token", "text": token}
-
-        # Parse final response
-        action = self.parser.parse_json_response(full_text)
-        if not action:
-            action = self.parser.fallback_action(
-                current_song, next_song,
-                weather_data.get("description", "") if weather_data else "",
-                next_song.get("tags", []),
-                recent_sayings=self._recent_sayings())
-        yield {"type": "done", "action": action, "full_text": full_text}
+        # Yield as SSE-compatible events (token first, then done)
+        if action and action.say:
+            yield {"type": "token", "text": action.say}
+        resp = {
+            "say": action.say if action else "",
+            "reason": action.reason if action else "",
+            "segue": action.segue if action else "smooth",
+            "mood": action.mood if action else "chill",
+            "action": action.action if action else "play_next",
+            "method": "agent_stream",
+        }
+        if selected_song:
+            resp["selected_song"] = selected_song
+        yield {"type": "done", "action": action, "response": resp}
 
     def _recent_sayings(self, n: int = 10) -> list[str]:
         """Get recently used DJ sayings to avoid repetition."""

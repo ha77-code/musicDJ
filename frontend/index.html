@@ -1260,6 +1260,57 @@ function parseLrc(lrc) {
   return lines;
 }
 
+// ── Music intent detection ──
+function hasMusicIntent(message) {
+  // Returns true only when message explicitly requests a music action
+  // with a music object (song name, genre, language, mood, style).
+  const msg = String(message || '').trim().toLowerCase();
+  if (!msg) return false;
+
+  // ── Anti-patterns: non-music contexts with 找/听/想听 ──
+  const nonMusic = [
+    /找.{0,2}(工作|对象|人|男朋|女朋|房子|实习)/,
+    /听你说|听我说|听你讲|听你[的]?(意见|建议|看法|分析)|听说[^歌]/,
+    /我想听你[说讲]|想听你[的]?(意见|建议|看法|分析)/,
+    /^我?今天.{0,4}(好累|好烦|心情不好|焦虑|迷茫|不知道怎么办)/,
+    /你觉得.{0,6}(该|怎么办|怎么样)/,
+    /^(陪我|我想)聊/,
+    /^(怎么办|好难|我好[^想])/,
+  ];
+  if (nonMusic.some(p => p.test(msg))) return false;
+
+  // ── Explicit music commands: verb + music object ──
+  const music = [
+    // 放/播 + target
+    /(放|播|播放)\s*[一]?\s*[首点]?\s*(.{0,20})/,
+    // 来一首/来点 + music target
+    /来[一首个点]\s*(.{0,20})/,
+    // 搜/找 + song
+    /(搜|找)\s*[一]?\s*[下]?\s*(歌|曲|首|音乐|[^\s]{2,})/,
+    // 推荐
+    /推荐[一]?\s*[首下]?/,
+    // 切/换
+    /(切歌|换[一首个]|换风格)/,
+    // 下一首/上一首/跳过
+    /(下[一首个]|上[一首个]|跳过|next|skip)/,
+    // 暂停/继续
+    /(暂停|停一下|继续|继[续放]|pause|resume)/,
+    // 听 + genre/language/style/mood
+    /(想?听|来点).{0,4}(歌|音乐|日语|韩语|英文|中文|粤语|轻松|安静|摇滚|电子|爵士|民谣|说唱|轻音乐|古典|后摇|氛围|R&B|hip.?hop|city.?pop|indie|pop)/,
+    // 想听 + song name
+    /想听\s*[^\s]{2,20}/,
+    // English
+    /\b(play|skip|next|search|recommend)\b/,
+    // Volume
+    /(声音|音量).{0,4}(大|小|高|低|\d)/,
+    /(大|小)声[点一]/,
+    // 有什么歌 / 帮我找歌
+    /(有什么|有没有).{0,4}歌/,
+    /帮我.{0,4}(找|选|挑|搜|放).{0,4}歌/,
+  ];
+  return music.some(p => p.test(msg));
+}
+
 function parseActions(fullText) {
   const actionPattern = /\[\[(\w+)(?::([^\]]*))?\]\]/g;
   let match; const actions = [];
@@ -1352,6 +1403,7 @@ const initialState = {
   weather: { icon: '☀️', temp: '20°', time: '' },
   directPlay: false,
   voiceMode: 'realtime',
+  openingBlocked: false,
 };
 
 function reducer(state, action) {
@@ -1386,6 +1438,7 @@ function reducer(state, action) {
     case 'SET_WEATHER': return { ...state, weather: action.payload };
     case 'SET_DIRECT_PLAY': return { ...state, directPlay: action.payload.direct };
     case 'SET_VOICE_MODE': return { ...state, voiceMode: action.payload };
+    case 'SET_OPENING_BLOCKED': return { ...state, openingBlocked: action.payload };
     default: return state;
   }
 }
@@ -2165,7 +2218,7 @@ const CompactCommandBar = ({ state, dispatch, onSendChat, onToggleVoiceMode }) =
   );
 };
 
-const ScriptPaper = ({ state, dispatch, scriptFeed, recCards, onSendChat, onToggleVoiceMode, onPlayRec, onAddRec, onReact }) => {
+const ScriptPaper = ({ state, dispatch, scriptFeed, recCards, onSendChat, onToggleVoiceMode, onPlayRec, onAddRec, onReact, onResume }) => {
   const paperRef = useRef(null);
   const particleRefs = useRef([]);
   const particles = useMemo(() => Array.from({ length: 54 }, (_, i) => {
@@ -2255,6 +2308,17 @@ const ScriptPaper = ({ state, dispatch, scriptFeed, recCards, onSendChat, onTogg
           </div>
           <div className="script-text">{primary}</div>
           {primaryReason && <div className="script-reason">{primaryReason}</div>}
+          {state.openingBlocked && (
+            <div style={{
+              marginTop: 12, padding: '8px 14px',
+              background: 'rgba(52, 211, 153, 0.12)',
+              border: '1px solid rgba(52, 211, 153, 0.3)',
+              borderRadius: 8, color: 'rgba(52, 211, 153, 0.85)',
+              fontSize: 12, textAlign: 'center', cursor: 'pointer'
+            }} onClick={() => { if (onResume) onResume(); }}>
+              点击播放按钮或此处开始收听
+            </div>
+          )}
           {state.showReactions && (
             <div className="mt-3 flex gap-2">
               <button className="script-chip" onClick={() => onReact('like')}>喜欢这首</button>
@@ -2286,7 +2350,7 @@ const ScriptPaper = ({ state, dispatch, scriptFeed, recCards, onSendChat, onTogg
   );
 };
 
-const BroadcastShell = ({ state, dispatch, audioActions, viz, isDjTalking, onTransition, onReact, scriptFeed, recCards, onSendChat, onToggleVoiceMode, onPlayRec, onAddRec }) => {
+const BroadcastShell = ({ state, dispatch, audioActions, viz, isDjTalking, onTransition, onReact, scriptFeed, recCards, onSendChat, onToggleVoiceMode, onPlayRec, onAddRec, onResumeOpening }) => {
   useEffect(() => {
     if (!state.transitionTriggered || state.currentMode !== 'dj') return;
     onTransition();
@@ -2304,7 +2368,8 @@ const BroadcastShell = ({ state, dispatch, audioActions, viz, isDjTalking, onTra
           onToggleVoiceMode={onToggleVoiceMode}
           onPlayRec={onPlayRec}
           onAddRec={onAddRec}
-          onReact={onReact} />
+          onReact={onReact}
+          onResume={onResumeOpening} />
       </div>
     </div>
   );
@@ -2691,7 +2756,26 @@ function App() {
       dispatch({ type: 'SET_PENDING_NEXT', payload: false });
       audioActions.prevTrack();
     },
-  }), [audioActions, cancelTransitionFallback]);
+    // Opening guard: when blocked with a pending song, play that song, not current_index
+    togglePlay: () => {
+      if (state.openingBlocked && state.pendingSong) {
+        handleResumeOpening();
+        return;
+      }
+      audioActions.togglePlay();
+    },
+    play: () => {
+      if (state.openingBlocked && state.pendingSong) {
+        handleResumeOpening();
+        return;
+      }
+      audioActions.play();
+    },
+    togglePlaylist: () => setPlaylistOpen(o => !o),
+    showSearch: () => setModal(m => ({ ...m, search: true })),
+    showImport: () => setModal(m => ({ ...m, import: true })),
+    closeAll: () => { setPlaylistOpen(false); setModal({ import: false, search: false, playlist: false, likes: false }); },
+  }), [audioActions, cancelTransitionFallback, state.openingBlocked, state.pendingSong, handleResumeOpening]);
 
   const loadMaterializedSong = useCallback((song, idx = -1) => {
     if (!song) return;
@@ -2716,6 +2800,7 @@ function App() {
 
   const loadPendingSong = useCallback(() => {
     cancelTransitionFallback();
+    dispatch({ type: 'SET_OPENING_BLOCKED', payload: false });
     const latest = stateRef.current;
     const song = latest.pendingSong;
     const songs = latest.playlist?.songs || [];
@@ -2853,9 +2938,11 @@ function App() {
   }, []);
 
   const runOpeningShow = useCallback(async (playlistData, startupIndex) => {
+    dispatch({ type: 'SET_OPENING_BLOCKED', payload: true });
     const songs = playlistData?.songs || [];
     const anchor = songs[startupIndex] || songs[0] || null;
     if (!anchor) {
+      dispatch({ type: 'SET_OPENING_BLOCKED', payload: false });
       const say = '嘿，欢迎回来。先导入一点歌，我就能开始给你开台。';
       dispatch({ type: 'SET_APP_STATE', payload: 'speaking' });
       dispatch({ type: 'SET_SPEECH', payload: { text: say, segue: null, reason: '等待歌单后开始推荐', showReactions: false } });
@@ -2891,6 +2978,7 @@ function App() {
         history: stateRef.current.recentTransitions || [],
         user_activity: stateRef.current.userActivity || '',
         chat_context: chatContext,
+        scene: 'opening',
       });
       const selected = r?.selected_song && r.action === 'play_selected'
         ? r.selected_song
@@ -2944,8 +3032,12 @@ function App() {
         dispatch({ type: 'SET_VOICE_MODE', payload: savedVoiceMode });
       }
       dispatch({ type: 'SET_MODE', payload: 'dj' });
+      // Force backend to DJ mode on fresh page open (ignore stale normal mode)
+      api('/api/mode', 'POST', { mode: 'dj' }).catch(() => {});
       let mode = 'dj';
       try { const m = await api('/api/mode'); mode = (m && m.mode) ? m.mode : 'dj'; } catch (e) {}
+      // Always start in DJ mode on fresh page load, even if backend had stale normal state
+      if (mode !== 'dj') { mode = 'dj'; api('/api/mode', 'POST', { mode: 'dj' }).catch(() => {}); }
       dispatch({ type: 'SET_MODE', payload: mode });
 
       setTimeout(async () => {
@@ -3016,6 +3108,7 @@ const doTransition = useCallback(async () => {
       history: state.recentTransitions || [],
       user_activity: state.userActivity || '',
       chat_context: chatCtx,
+      scene: 'transition',
     });
     if (stateRef.current.appState !== 'speaking') return;
     if (r.say) {
@@ -3079,6 +3172,7 @@ const doTransition = useCallback(async () => {
 const sendChat = useCallback(async (msg) => {
   stopChatVoice();
   tts.stop();
+  dispatch({ type: 'SET_OPENING_BLOCKED', payload: false });
   dispatch({ type: 'CLEAR_SPEECH' });
   dispatch({ type: 'SET_APP_STATE', payload: 'chatting' });
   const sessionId = chatVoiceRef.current.sessionId;
@@ -3102,6 +3196,7 @@ const sendChat = useCallback(async (msg) => {
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const reader = resp.body.getReader();
     const decoder = new TextDecoder(); let buffer = ''; let fullText = '';
+    let backendCleanText = ''; let backendNoIntent = false;
     while (true) {
       if (chatVoiceRef.current.sessionId !== sessionId) {
         try { await reader.cancel(); } catch (e) {}
@@ -3134,6 +3229,9 @@ const sendChat = useCallback(async (msg) => {
               fullText += data.text;
             } else if (data.type === 'audio' && data.data) {
               enqueueChatVoiceChunk(sessionId, data.data);
+            } else if (lastEvent === 'text_done') {
+              if (data.cleaned_text) backendCleanText = data.cleaned_text;
+              if (data.no_music_intent) backendNoIntent = true;
             }
           } catch (e) {}
           lastEvent = '';
@@ -3141,12 +3239,20 @@ const sendChat = useCallback(async (msg) => {
       }
     }
     markChatVoiceStreamDone(sessionId);
-    const actions = parseActions(fullText);
-    const cleanText = cleanActionText(fullText) || fullText;
-    dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: cleanText } });
+    const displayText = backendNoIntent && backendCleanText ? backendCleanText : (cleanActionText(fullText) || fullText);
+    const actions = parseActions(backendNoIntent && backendCleanText ? backendCleanText : fullText);
+    dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: displayText } });
     await waitForChatVoiceDrain(sessionId);
     if (chatVoiceRef.current.sessionId !== sessionId) return;
-    if (actions.length > 0 && executeActionsRef.current) await executeActionsRef.current(actions);
+    // Music intent guard: both frontend and backend check
+    const userHasMusicIntent = hasMusicIntent(msg) && !backendNoIntent;
+    if (actions.length > 0 && executeActionsRef.current) {
+      if (userHasMusicIntent) {
+        await executeActionsRef.current(actions);
+      } else {
+        console.log('[DJ] Music intent not detected, skipping actions:', actions.map(a => a.type).join(', '));
+      }
+    }
   } catch (e) {
     if (chatVoiceRef.current.sessionId === sessionId) {
       dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: '刚刚语音回复有点卡，我先用文字接上。' } });
@@ -3308,6 +3414,13 @@ executeActionsRef.current = executeActions;
       dispatch({ type: 'SET_PENDING_NEXT', payload: false });
     }
   }, [state.playlist.current_index, tts, cancelTransitionFallback, stopChatVoice]);
+  // Resume opening (click-to-start after autoplay block)
+  const handleResumeOpening = useCallback(() => {
+    dispatch({ type: 'SET_OPENING_BLOCKED', payload: false });
+    if (state.pendingSong) {
+      setTimeout(() => loadPendingSong(), 200);
+    }
+  }, [state.pendingSong, loadPendingSong]);
   // Mode toggle
   const toggleMode = useCallback(async () => {
     cancelTransitionFallback();
@@ -3407,7 +3520,8 @@ executeActionsRef.current = executeActions;
           onSendChat={sendChat}
           onToggleVoiceMode={toggleVoiceMode}
           onPlayRec={playRecommendation}
-          onAddRec={addRecommendation} />
+          onAddRec={addRecommendation}
+          onResumeOpening={handleResumeOpening} />
       </div>
       {/* Playlist Slide */}
       <PlaylistSlide open={playlistOpen} songs={state.playlist.songs} currentIndex={state.playlist.current_index}
