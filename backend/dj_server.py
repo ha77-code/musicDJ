@@ -1183,10 +1183,11 @@ def api_agent_chat():
     system_prompt += """
 
 ## Multilingual policy
-- You may reply in Chinese, English, or a natural Chinese-English mix.
-- User requests can name songs in English, Japanese, Korean, Chinese, or romanization.
+- You may reply in Chinese, English, Japanese, Korean, or any natural mix.
+- User requests can name songs in English, Japanese, Korean, Chinese, or romanisation.
 - Never skip or reject a song because it is Japanese, Korean, English, or multilingual.
-- Preserve original song titles and artist names exactly in action tags.
+- Preserve original song titles and artist names exactly in action tags — do not transliterate, translate, or alter kana/kanji/hangul/romanisation.
+- When mentioning Japanese/Korean songs, naturally use the original title/artist in the original script; explain mood or fit in Chinese or English.
 """
 
     user_music_intent = _has_music_intent(message)
@@ -1311,10 +1312,11 @@ def api_agent_chat_voice():
     system_prompt += """
 
 ## Multilingual policy
-- You may reply in Chinese, English, or a natural Chinese-English mix.
-- User requests can name songs in English, Japanese, Korean, Chinese, or romanization.
+- You may reply in Chinese, English, Japanese, Korean, or any natural mix.
+- User requests can name songs in English, Japanese, Korean, Chinese, or romanisation.
 - Never skip or reject a song because it is Japanese, Korean, English, or multilingual.
-- Preserve original song titles and artist names exactly in action tags.
+- Preserve original song titles and artist names exactly in action tags — do not transliterate, translate, or alter kana/kanji/hangul/romanisation.
+- When mentioning Japanese/Korean songs, naturally use the original title/artist in the original script; explain mood or fit in Chinese or English.
 """
 
     user_has_music_intent = _has_music_intent(message)
@@ -1358,7 +1360,8 @@ def api_agent_chat_voice():
             tried_realtime = True
             # Extract a condensed personality for the voice model
             voice_prompt = (
-                "You can speak Chinese, English, or a natural mix; preserve Japanese/Korean/English song names exactly. "
+                "You can speak Chinese, English, Japanese, Korean, or a natural mix of these languages. "
+                "Preserve Japanese/Korean/English/Chinese song names and artist names exactly — do not alter, transliterate or translate them. "
                 f"你是{personality['name']}，一个深夜电台DJ。"
                 f"你的性格：{personality['style']}"
                 f"请用自然的、有情感的语气朗读以下内容。"

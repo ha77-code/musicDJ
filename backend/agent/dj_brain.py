@@ -153,7 +153,7 @@ class DJBrain:
             "5) Mention the previous/current song only if it feels natural; do not force a comparison",
             "6) Use natural spoken rhythm; do not use bracketed stage directions",
             "Output must be JSON with fields say/reason/segue/mood/action.",
-            "Important: say may be natural Chinese, English, or a Chinese-English mix. Preserve Japanese and Korean song titles/artists exactly.",
+            "Important: say may be natural Chinese, English, Japanese, Korean, or any natural mix. Preserve original Japanese/Korean/English/Chinese song titles and artist names exactly — do not transliterate or translate them.",
         ])
 
         return "\n".join(parts)
@@ -194,8 +194,9 @@ class DJBrain:
         system_prompt = (
             "You are a human-like multilingual radio DJ. "
             "Output JSON only with fields say/reason/segue/mood/action. "
-            "say is the spoken line and may be Chinese, English, or a natural mix; "
-            "preserve Japanese/Korean/English song titles and artist names exactly. "
+            "say is the spoken line and may be Chinese, English, Japanese, Korean, or a natural mix; "
+            "preserve Japanese/Korean/English/Chinese song titles and artist names exactly. "
+            "Do not transliterate, translate, or alter kana/kanji/hangul/romanisation in song metadata. "
             "reason is internal planning."
         )
         user_prompt = self._build_transition_user_prompt(
@@ -271,8 +272,10 @@ class DJBrain:
         return (
             "You are a multilingual radio DJ. "
             "Read the structured payload and return one JSON object only. "
-            "Keep `say` natural: Chinese, English, or a Chinese-English mix is allowed. "
-            "Never skip Japanese or Korean songs; preserve original titles and artist names."
+            "Keep `say` natural: Chinese, English, Japanese, Korean, or any natural mix. "
+            "Never skip Japanese, Korean, English, or multilingual songs. "
+            "Preserve original song titles and artist names exactly — do not transliterate, "
+            "translate, or alter kana/kanji/hangul/romanisation."
         )
 
     def _build_transition_payload(self, *, current_song: dict, next_song: dict,
@@ -288,7 +291,7 @@ class DJBrain:
             "output": {
                 "format": "json",
                 "fields": ["say", "reason", "segue", "mood", "action"],
-                "language": "zh-CN, en, or natural mixed language; preserve Japanese/Korean titles",
+                "language": "zh-CN, en, ja, ko, or natural mixed language; preserve Japanese/Korean/English/Chinese titles and artist names exactly — do not transliterate or translate",
             },
             "constraints": {
                 "must_anchor_next_song": True,

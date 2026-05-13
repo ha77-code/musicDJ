@@ -271,20 +271,44 @@ class TTSProvider:
 
     # ── SSML Builder ───────────────────────────────────
 
+    @staticmethod
+    def _detect_text_lang(text: str) -> str:
+        """Lightweight language detection for SSML xml:lang.
+
+        Returns 'ko-KR', 'ja-JP', 'en-US', or 'zh-CN' based on script dominance.
+        Hangul-heavy -> ko-KR, Kana-heavy -> ja-JP, Latin-dominant -> en-US, else zh-CN.
+        """
+        if not text:
+            return "zh-CN"
+        hangul = len(re.findall(r'[가-힯]', text))
+        kana = len(re.findall(r'[぀-ヿ]', text))
+        cjk = len(re.findall(r'[一-鿿]', text))
+        latin = len(re.findall(r'[A-Za-z]', text))
+
+        if hangul > cjk * 0.6 and hangul > kana:
+            return "ko-KR"
+        if kana > cjk * 0.6 and kana > hangul:
+            return "ja-JP"
+        if latin > 8 and latin > cjk * 1.4:
+            return "en-US"
+        return "zh-CN"
+
     def _build_ssml(self, text: str, mood: str, emphasis_words: list[str] | None = None) -> str:
         """Wrap text in SSML with mood-based prosody and emphasis markers.
 
         Produces valid SSML compatible with 火山引擎 HTTP TTS API.
         Uses only tags documented by Volcano: <speak>, <break>, <emphasis>.
         Prosody is applied via <speak> root attributes (pitch/rate).
+        xml:lang is set dynamically from detected primary language.
         """
         mood_cfg = self.ssml_mood_config.get(mood, self.ssml_mood_config.get("chill", {}))
         pitch = mood_cfg.get("pitch", "0%")
         rate = mood_cfg.get("rate", "0%")
+        lang = self._detect_text_lang(text)
 
         # Build SSML
         ssml = f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" '
-        ssml += f'xml:lang="zh-CN" pitch="{pitch}" rate="{rate}">\n'
+        ssml += f'xml:lang="{lang}" pitch="{pitch}" rate="{rate}">\n'
 
         # Process text: convert punctuation to breaks, inject emphasis tags
         processed = self._insert_emotional_prosody(text, mood, emphasis_words)
