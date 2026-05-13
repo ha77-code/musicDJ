@@ -20,6 +20,11 @@
     --neon: #34d399;
     --neon-strong: #22c55e;
     --danger: #ef4444;
+    --stage-accent: #34d399;
+    --stage-accent-strong: #22c55e;
+    --stage-accent-soft: rgba(52, 211, 153, 0.28);
+    --stage-accent-line: rgba(52, 211, 153, 0.32);
+    --stage-accent-glow: rgba(52, 211, 153, 0.55);
     --radius-lg: 22px;
     --radius-xl: 28px;
   }
@@ -461,7 +466,7 @@
     align-items: center;
     gap: 6px;
     margin-top: 6px;
-    color: #34d399;
+    color: var(--stage-accent);
     font-size: 12px;
   }
 
@@ -469,8 +474,8 @@
     width: 7px;
     height: 7px;
     border-radius: 999px;
-    background: #34d399;
-    box-shadow: 0 0 14px rgba(52, 211, 153, 0.75);
+    background: var(--stage-accent);
+    box-shadow: 0 0 14px var(--stage-accent-glow);
   }
 
   .status-dot.talking {
@@ -549,7 +554,7 @@
     overflow: hidden;
     align-self: stretch;
     background:
-      radial-gradient(circle at 50% 92%, rgba(74, 222, 128, 0.26), transparent 52%),
+      radial-gradient(circle at 50% 92%, var(--stage-accent-soft), transparent 52%),
       linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015));
     border: 1px solid rgba(240, 255, 246, 0.1);
   }
@@ -559,7 +564,7 @@
     position: absolute;
     inset: 0;
     background:
-      linear-gradient(to top, rgba(52, 211, 153, 0.12), transparent 48%),
+      linear-gradient(to top, var(--stage-accent-line), transparent 48%),
       repeating-linear-gradient(0deg, transparent 0 17px, rgba(255, 255, 255, 0.045) 18px);
     pointer-events: none;
   }
@@ -648,8 +653,8 @@
   .progress-fill {
     height: 100%;
     border-radius: inherit;
-    background: linear-gradient(90deg, #f9fff9, #34d399);
-    box-shadow: 0 0 18px rgba(52, 211, 153, 0.55);
+    background: linear-gradient(90deg, #f9fff9, var(--stage-accent));
+    box-shadow: 0 0 18px var(--stage-accent-glow);
   }
 
   .stage-controls {
@@ -674,7 +679,7 @@
 
   .stage-btn:hover {
     transform: translateY(-1px);
-    border-color: rgba(74, 222, 128, 0.42);
+    border-color: var(--stage-accent-line);
     background: rgba(255, 255, 255, 0.14);
   }
 
@@ -684,7 +689,7 @@
     color: #06130d;
     border-color: rgba(255, 255, 255, 0.8);
     background: #f8fff9;
-    box-shadow: 0 0 26px rgba(52, 211, 153, 0.42);
+    box-shadow: 0 0 26px var(--stage-accent-soft);
   }
 
   .stage-volume {
@@ -1417,9 +1422,52 @@ function detectSpeechLang(text) {
   return 'zh-CN';
 }
 
+/* ── Stage accent helpers ── */
+function normalizeHexColor(value) {
+  if (typeof value !== 'string') return null;
+  const m = value.trim().match(/^#([0-9A-Fa-f]{6})$/);
+  return m ? '#' + m[1].toLowerCase() : null;
+}
+
+function hexToRgb(hex) {
+  const v = parseInt(hex.slice(1), 16);
+  return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
+}
+
+function deriveAccentTokens(hex) {
+  const { r, g, b } = hexToRgb(hex);
+  return {
+    '--stage-accent': hex,
+    '--stage-accent-strong': hex, /* brightened via filter in JS when needed */
+    '--stage-accent-soft': `rgba(${r},${g},${b},0.28)`,
+    '--stage-accent-line': `rgba(${r},${g},${b},0.32)`,
+    '--stage-accent-glow': `rgba(${r},${g},${b},0.55)`,
+  };
+}
+
+function applyStageAccent(el, hex) {
+  if (!el) return;
+  const tokens = deriveAccentTokens(hex);
+  Object.entries(tokens).forEach(([k, v]) => {
+    el.style.setProperty(k, v);
+  });
+}
+
+function loadSavedStageAccent() {
+  try {
+    const raw = localStorage.getItem('dj_stage_accent');
+    return normalizeHexColor(raw);
+  } catch { return null; }
+}
+
+function saveStageAccent(hex) {
+  try { localStorage.setItem('dj_stage_accent', hex); } catch {}
+}
+
 /* ═════════════════════════════════════════════════
  * 3. State Reducer
  * ═════════════════════════════════════════════════ */
+const STAGE_ACCENT_DEFAULT = '#34d399';
 const initialState = {
   isPlaying: false,
   currentTime: 0,
@@ -1447,6 +1495,7 @@ const initialState = {
   directPlay: false,
   voiceMode: 'realtime',
   openingBlocked: false,
+  stageAccent: loadSavedStageAccent() || STAGE_ACCENT_DEFAULT,
 };
 
 function reducer(state, action) {
@@ -1482,6 +1531,7 @@ function reducer(state, action) {
     case 'SET_DIRECT_PLAY': return { ...state, directPlay: action.payload.direct };
     case 'SET_VOICE_MODE': return { ...state, voiceMode: action.payload };
     case 'SET_OPENING_BLOCKED': return { ...state, openingBlocked: action.payload };
+    case 'SET_STAGE_ACCENT': return { ...state, stageAccent: action.payload };
     default: return state;
   }
 }
@@ -1643,7 +1693,7 @@ function useAudioPlayer(audioRef, state, dispatch) {
 }
 
 // ── Visualizer ──
-function useAudioVisualizer(audioRef, isPlaying) {
+function useAudioVisualizer(audioRef, isPlaying, stageAccent) {
   const spectrumRef = useRef(null);
   const waveformRef = useRef(null);
   const ctxRef = useRef(null);
@@ -1697,9 +1747,10 @@ function useAudioVisualizer(audioRef, isPlaying) {
         const h = (freqData[idx] / 255) * SH * 0.85;
         const x = i * (SW / barCount);
         const grad = sCtx.createLinearGradient(0, SH, 0, SH - h);
+        const acc = hexToRgb(stageAccent || STAGE_ACCENT_DEFAULT);
         grad.addColorStop(0, 'rgba(248,255,249,0.88)');
-        grad.addColorStop(0.5, 'rgba(52,211,153,0.62)');
-        grad.addColorStop(1, 'rgba(52,211,153,0.12)');
+        grad.addColorStop(0.5, `rgba(${acc.r},${acc.g},${acc.b},0.62)`);
+        grad.addColorStop(1, `rgba(${acc.r},${acc.g},${acc.b},0.12)`);
         sCtx.fillStyle = grad;
         sCtx.fillRect(x, SH - h, barW, h);
       }
@@ -1711,7 +1762,7 @@ function useAudioVisualizer(audioRef, isPlaying) {
       wCtx.beginPath();
       wCtx.strokeStyle = 'rgba(248,255,249,0.62)';
       wCtx.lineWidth = 1.5;
-      wCtx.shadowColor = 'rgba(52,211,153,0.38)';
+      wCtx.shadowColor = `rgba(${hexToRgb(stageAccent || STAGE_ACCENT_DEFAULT).r},${hexToRgb(stageAccent || STAGE_ACCENT_DEFAULT).g},${hexToRgb(stageAccent || STAGE_ACCENT_DEFAULT).b},0.38)`;
       wCtx.shadowBlur = 6;
       for (let i = 0; i < waveData.length; i++) {
         const x = (i / waveData.length) * WW;
@@ -1725,7 +1776,7 @@ function useAudioVisualizer(audioRef, isPlaying) {
     };
     animRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(animRef.current);
-  }, [isPlaying]);
+  }, [isPlaying, stageAccent]);
 
   return { spectrumRef, waveformRef, init };
 }
@@ -2020,7 +2071,7 @@ const TopNav = ({ state, onToggleMode, onTogglePlaylist, playlistOpen, onSearch 
       style={{ background: 'rgba(4,7,5,0.68)', backdropFilter: 'blur(22px) saturate(160%)', borderBottom: '1px solid rgba(240,255,246,0.08)' }}>
       <div className="flex items-center gap-3 sm:gap-5 min-w-0">
         <div className="text-[15px] font-black tracking-[-0.03em] flex items-center gap-2 text-emerald-50 min-w-0">
-          <span className="w-[8px] h-[8px] rounded-full inline-block bg-emerald-400" style={{ boxShadow: '0 0 14px rgba(52,211,153,0.8)' }}></span>
+          <span className="w-[8px] h-[8px] rounded-full inline-block" style={{ background: state.stageAccent, boxShadow: `0 0 14px rgba(${hexToRgb(state.stageAccent || STAGE_ACCENT_DEFAULT).r},${hexToRgb(state.stageAccent || STAGE_ACCENT_DEFAULT).g},${hexToRgb(state.stageAccent || STAGE_ACCENT_DEFAULT).b},0.8)` }}></span>
           <span className="truncate">clauseekio</span>
         </div>
         <button onClick={onTogglePlaylist} className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${playlistOpen ? 'text-emerald-200 bg-emerald-400/12 border border-emerald-300/25' : 'text-emerald-50/58 hover:text-emerald-50 bg-white/[0.03] border border-white/[0.06]'}`}>
@@ -2037,8 +2088,8 @@ const TopNav = ({ state, onToggleMode, onTogglePlaylist, playlistOpen, onSearch 
         <span className="hidden sm:inline text-xs text-emerald-50/56">{clock}</span>
         <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider" style={{ color: state.currentMode === 'dj' ? '#86efac' : 'rgba(240,255,246,0.4)' }}>
           <span className="w-[6px] h-[6px] rounded-full" style={{
-            background: state.currentMode === 'dj' ? '#22c55e' : '#6b7280',
-            boxShadow: state.currentMode === 'dj' ? '0 0 8px #22c55e' : 'none',
+            background: state.currentMode === 'dj' ? state.stageAccent : '#6b7280',
+            boxShadow: state.currentMode === 'dj' ? `0 0 8px ${state.stageAccent}` : 'none',
             animation: state.currentMode === 'dj' ? 'onAirPulse 1.5s ease-in-out infinite' : 'none'
           }}></span>
           {state.currentMode === 'dj' ? 'ON AIR' : 'OFF AIR'}
@@ -2081,7 +2132,7 @@ const StageProgress = ({ currentTime, duration, waveformRef, onSeek }) => {
   );
 };
 
-const StageControls = ({ isPlaying, volume, onTogglePlay, onPrev, onNext, onVolume }) => {
+const StageControls = ({ isPlaying, volume, onTogglePlay, onPrev, onNext, onVolume, stageAccent }) => {
   const [volPopup, setVolPopup] = useState(false);
   const volRef = useRef(null);
 
@@ -2110,7 +2161,7 @@ const StageControls = ({ isPlaying, volume, onTogglePlay, onPrev, onNext, onVolu
             <input type="range" min="0" max="100" value={volume * 100}
               onChange={e => onVolume(Number(e.target.value) / 100)}
               className="w-full h-1.5 rounded-full cursor-pointer"
-              style={{ accentColor: '#34d399' }} />
+              style={{ accentColor: stageAccent }} />
           </div>
         )}
       </div>
@@ -2143,9 +2194,55 @@ const MusicStage = ({ state, dispatch, audioActions, viz, isDjTalking }) => {
     || state.lyricsLines[state.currentLyricIndex + 1]?.text
     || (state.isPlaying ? '节奏已经起来了，DJ 正在听这首歌的呼吸。' : '选一首歌，我们把灯光调暗一点。');
   const cover = song.cover || song.cover_url || '';
+  const stageRef = useRef(null);
+  const [colorOpen, setColorOpen] = useState(false);
+  const colorBtnRef = useRef(null);
+
+  // Apply stage accent to the music-stage container on mount / change
+  useEffect(() => {
+    applyStageAccent(stageRef.current, state.stageAccent);
+  }, [state.stageAccent]);
+
+  const handleColorChange = (hex) => {
+    const normalized = normalizeHexColor(hex);
+    if (!normalized) return;
+    dispatch({ type: 'SET_STAGE_ACCENT', payload: normalized });
+    saveStageAccent(normalized);
+    applyStageAccent(stageRef.current, normalized);
+  };
+
+  const handleColorReset = () => {
+    dispatch({ type: 'SET_STAGE_ACCENT', payload: STAGE_ACCENT_DEFAULT });
+    saveStageAccent(STAGE_ACCENT_DEFAULT);
+    applyStageAccent(stageRef.current, STAGE_ACCENT_DEFAULT);
+  };
+
+  const presetSwatches = [
+    { hex: '#34d399', label: 'green' },
+    { hex: '#22d3ee', label: 'cyan' },
+    { hex: '#60a5fa', label: 'blue' },
+    { hex: '#a78bfa', label: 'purple' },
+    { hex: '#f472b6', label: 'pink' },
+    { hex: '#fbbf24', label: 'amber' },
+    { hex: '#ef4444', label: 'red' },
+  ];
+
+  useEffect(() => {
+    if (!colorOpen) return;
+    const onDown = (e) => {
+      if (colorBtnRef.current && !colorBtnRef.current.contains(e.target)
+          && !e.target.closest('[data-color-popover]')) {
+        setColorOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [colorOpen]);
+
+  const acc = hexToRgb(state.stageAccent || STAGE_ACCENT_DEFAULT);
 
   return (
-    <section className="music-stage">
+    <section className="music-stage" ref={stageRef}>
       <div className="stage-topline">
           <div className="station-lockup">
           <div className="station-avatar">
@@ -2159,7 +2256,59 @@ const MusicStage = ({ state, dispatch, audioActions, viz, isDjTalking }) => {
             </div>
           </div>
         </div>
-        <div className="stage-clock">{fmtTime(state.currentTime)} / {fmtTime(state.duration)}</div>
+        <div className="flex items-center gap-3">
+          <div className="stage-clock">{fmtTime(state.currentTime)} / {fmtTime(state.duration)}</div>
+          <div style={{ position: 'relative' }}>
+            <button ref={colorBtnRef}
+              onClick={() => setColorOpen(v => !v)}
+              title="舞台主题色"
+              style={{
+                width: 22, height: 22, borderRadius: 999, border: '2px solid rgba(255,255,255,0.28)',
+                background: state.stageAccent || STAGE_ACCENT_DEFAULT,
+                cursor: 'pointer', boxShadow: `0 0 10px rgba(${acc.r},${acc.g},${acc.b},0.45)`,
+                flexShrink: 0,
+              }} />
+            {colorOpen && (
+              <div data-color-popover style={{
+                position: 'absolute', right: 0, top: 'calc(100% + 8px)', zIndex: 50,
+                background: 'rgba(7,11,9,0.96)', border: '1px solid rgba(255,255,255,0.14)',
+                borderRadius: 16, padding: 14, minWidth: 196,
+                boxShadow: '0 18px 40px rgba(0,0,0,0.5)',
+              }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <input type="color" value={state.stageAccent || STAGE_ACCENT_DEFAULT}
+                    onChange={e => handleColorChange(e.target.value)}
+                    style={{ width: 32, height: 32, borderRadius: 8, border: 'none', cursor: 'pointer', background: 'transparent' }} />
+                  <span className="text-xs font-bold" style={{ color: 'rgba(248,255,249,0.85)' }}>舞台主题色</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {presetSwatches.map(p => (
+                    <button key={p.hex}
+                      onClick={() => handleColorChange(p.hex)}
+                      title={p.label}
+                      style={{
+                        width: 26, height: 26, borderRadius: 999,
+                        background: p.hex,
+                        border: (state.stageAccent === p.hex) ? '2px solid #fff' : '2px solid transparent',
+                        cursor: 'pointer', transition: 'transform 0.15s',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.15)'}
+                      onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                    />
+                  ))}
+                </div>
+                <button onClick={() => { handleColorReset(); setColorOpen(false); }}
+                  className="mt-3 w-full text-[11px] py-1.5 rounded-full font-semibold transition-all"
+                  style={{
+                    background: 'rgba(255,255,255,0.08)', color: 'rgba(248,255,249,0.72)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                  }}>
+                  恢复默认
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="stage-body">
@@ -2179,7 +2328,8 @@ const MusicStage = ({ state, dispatch, audioActions, viz, isDjTalking }) => {
           onTogglePlay={audioActions.togglePlay}
           onPrev={audioActions.prevTrack}
           onNext={audioActions.nextTrack}
-          onVolume={v => dispatch({ type: 'SET_VOLUME', payload: v })} />
+          onVolume={v => dispatch({ type: 'SET_VOLUME', payload: v })}
+          stageAccent={state.stageAccent} />
       </div>
     </section>
   );
@@ -2673,7 +2823,7 @@ function App() {
 
   const audioActions = useAudioPlayer(audioRef, state, dispatch);
   audioActionsRef.current = audioActions;
-  const viz = useAudioVisualizer(audioRef, state.isPlaying);
+  const viz = useAudioVisualizer(audioRef, state.isPlaying, state.stageAccent);
 
   const cancelTransitionFallback = useCallback(() => {
     transitionTokenRef.current += 1;
