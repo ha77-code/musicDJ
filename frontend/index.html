@@ -1362,6 +1362,49 @@ function trackMatchScore(song, wantedTitle, wantedArtist) {
   return score;
 }
 
+function isSameTrack(a, b) {
+  if (!a || !b) return false;
+  const aid = a.netease_id ? String(a.netease_id) : '';
+  const bid = b.netease_id ? String(b.netease_id) : '';
+  if (aid && bid && aid === bid) return true;
+  const at = normalizeTrackText(a.title);
+  const bt = normalizeTrackText(b.title);
+  const aa = normalizeTrackText(a.artist);
+  const ba = normalizeTrackText(b.artist);
+  return !!(at && bt && aa && ba && at === bt && aa === ba);
+}
+
+function normalizePlayableSong(song) {
+  if (!song) return null;
+  return {
+    title: song.title || song.name || '未命名曲目',
+    artist: song.artist || song.artists || '未知歌手',
+    netease_id: song.netease_id ? String(song.netease_id) : (song.id ? String(song.id) : ''),
+    source: song.source || (song.netease_id || song.id ? 'netease' : 'local'),
+    playlist_index: Number.isInteger(song.playlist_index) ? song.playlist_index : -1,
+    path: song.path || '',
+    cover: song.cover || song.cover_url || song.album_pic || '',
+    cover_url: song.cover_url || song.cover || song.album_pic || '',
+    album: song.album || song.album_name || '',
+    album_name: song.album_name || song.album || '',
+    tags: song.tags || [],
+  };
+}
+
+function isHighConfidenceTrackMatch(song, wantedTitle, wantedArtist) {
+  const title = normalizeTrackText(song?.title);
+  const artist = normalizeTrackText(song?.artist);
+  const targetTitle = normalizeTrackText(wantedTitle);
+  const targetArtist = normalizeTrackText(wantedArtist);
+  if (!title || !targetTitle) return false;
+  const titleOk = title === targetTitle
+    || (targetTitle.length >= 4 && title.includes(targetTitle))
+    || (title.length >= 4 && targetTitle.includes(title));
+  if (!titleOk) return false;
+  if (!targetArtist) return title === targetTitle;
+  return !!artist && (artist === targetArtist || artist.includes(targetArtist) || targetArtist.includes(artist));
+}
+
 function detectSpeechLang(text) {
   const value = String(text || '');
   const hangul = /[\uac00-\ud7af]/.test(value);
@@ -1474,6 +1517,7 @@ function useAudioPlayer(audioRef, state, dispatch) {
   const play = useCallback(async () => {
     const audio = audioRef.current;
     if (!audio) return;
+    if (state.openingBlocked && state.pendingSong) return;
     if ((!audio.src || audio.src === window.location.href) && state.playlist.songs.length > 0) {
       const idx = state.playlist.current_index >= 0 ? state.playlist.current_index : 0;
       loadSong(idx);
@@ -1487,15 +1531,16 @@ function useAudioPlayer(audioRef, state, dispatch) {
         audio.addEventListener('canplay', () => audio.play().catch(() => {}), { once: true });
       }
     }
-  }, [state.playlist.songs.length, state.playlist.current_index, loadSong]);
+  }, [state.openingBlocked, state.pendingSong, state.playlist.songs.length, state.playlist.current_index, loadSong]);
 
   const pause = useCallback(() => {
     audioRef.current?.pause();
   }, []);
 
   const togglePlay = useCallback(() => {
+    if (state.openingBlocked && state.pendingSong) return;
     state.isPlaying ? pause() : play();
-  }, [state.isPlaying, play, pause]);
+  }, [state.openingBlocked, state.pendingSong, state.isPlaying, play, pause]);
 
   const nextTrack = useCallback(() => {
     const songs = state.playlist.songs;
@@ -2638,6 +2683,14 @@ function App() {
     }
   }, []);
 
+  const commitPendingSong = useCallback((song, reason = '') => {
+    const normalized = normalizePlayableSong(song);
+    if (!normalized) return null;
+    dispatch({ type: 'SET_PENDING_SONG', payload: normalized });
+    if (reason) console.log('[DJ] committed pending song:', reason, normalized.title, normalized.artist);
+    return normalized;
+  }, []);
+
   const scheduleTransitionFallback = useCallback((token, timeoutMs, onTimeout) => {
     if (transitionTimerRef.current) {
       clearTimeout(transitionTimerRef.current);
@@ -2811,24 +2864,14 @@ function App() {
       dispatch({ type: 'SET_PENDING_SONG', payload: null });
       dispatch({ type: 'CLEAR_SPEECH' });
       let idx = song.playlist_index ?? -1;
-      if (idx < 0 || idx >= songs.length) idx = -1;
+      if (idx < 0 || idx >= songs.length || !isSameTrack(songs[idx], song)) idx = -1;
       if (idx < 0 && song.netease_id) idx = songs.findIndex(s => String(s.netease_id) === String(song.netease_id));
-      if (idx < 0) idx = songs.findIndex(s => s.title === song.title && s.artist === song.artist);
+      if (idx < 0) idx = songs.findIndex(s => isSameTrack(s, song));
       if (idx >= 0) {
         audioActions.loadSong(idx);
         setTimeout(() => audioActions.play(), 200);
       } else if (song.netease_id) {
-        const ns = {
-          title: song.title,
-          artist: song.artist,
-          netease_id: song.netease_id,
-          source: song.source || 'netease',
-          cover: song.cover_url || song.album_pic || '',
-          album: song.album_name || '',
-          cover_url: song.cover_url || song.album_pic || '',
-          tags: [],
-          path: song.path || '',
-        };
+        const ns = normalizePlayableSong(song);
         const newSongs = [...songs, ns];
         dispatch({ type: 'SET_PLAYLIST', payload: { songs: newSongs, current_index: latest.playlist?.current_index ?? -1 } });
         idx = newSongs.length - 1;
@@ -2837,7 +2880,8 @@ function App() {
         api('/api/playlist/current', 'POST', { index: idx }).catch(() => {});
         setTimeout(() => audioActions.play(), 300);
       } else {
-        audioActions.nextTrack();
+        console.warn('[DJ] pending song is not playable, refusing to play a different track:', song);
+        dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
       }
       return;
     }
@@ -2848,7 +2892,11 @@ function App() {
       dispatch({ type: 'SET_PENDING_SONG', payload: null });
       dispatch({ type: 'CLEAR_SPEECH' });
       dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
-      audioActions.nextTrack();
+      if (latest.currentMode === 'dj') {
+        dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: true });
+      } else {
+        audioActions.nextTrack();
+      }
       return;
     }
     dispatch({ type: 'SET_PENDING_NEXT', payload: false });
