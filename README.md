@@ -1,241 +1,230 @@
 # Music DJ — clauseekio
 
-一个懂你口味的 AI 电台 DJ，名字叫 **clauseekio**。打开就能自动推歌聊天，实时策展，不是预制菜。
+MusicDJ 是一个自用 AI 电台 DJ agent。它不是普通播放器：打开页面后，DJ 会尝试主动开台、聊天、推歌、说自然串词，并根据你的历史口味和当前状态做电台式随机选歌。
 
-## 安装
+当前版本重点：
+- 上半区是黑白绿 broadcast 音乐舞台，负责歌曲信息、频谱、播放控制、进度和音量。
+- 下半区是 DJ 稿纸区，优先显示 DJ 正在说的话、串词、推荐理由和聊天内容。
+- 选歌结合离线口味画像、运行时播放统计、跳过记录、新鲜度和网易云发现。
+- 普通闲聊不会自动变成推歌；只有明确说放歌、搜歌、推荐、切歌、暂停、继续或调音量时才触发音乐动作。
+- DJ 说到的下一首歌应和实际播放的 `pendingSong` 保持一致。
 
-### 环境要求
+## What It Is
 
-- **Python 3.10+**（推荐 Anaconda）
-- **Node.js**（用于网易云 API 服务）
+MusicDJ 由 Flask 后端和单文件 React/Babel 前端组成：
+- 本地播放和网易云搜索/播放并存。
+- LLM 负责聊天、选歌理由和串词。
+- TTS/实时语音负责 DJ 播报。
+- SQLite 和 JSON 文件记录听歌记忆、跳过、喜欢、播放次数和口味画像。
+- 前端使用 Web Audio 做频谱和波形律动。
 
-### 安装步骤
+这个项目主要面向个人使用，不追求公共产品式完整包装。
+
+## Quick Start
+
+环境要求：
+- Python 3.10+
+- Node.js，用于运行网易云 API 服务
+- 可选：DeepSeek API、火山引擎 TTS、OpenWeatherMap、网易云 Cookie
+
+安装 Python 依赖：
 
 ```bash
-# 1. 安装 Python 依赖
 pip install flask requests mutagen pycryptodome websocket-client
+```
 
-# 2. 安装网易云 API 依赖
+安装网易云 API 依赖：
+
+```bash
 cd NeteaseCloudMusicApi/api-enhanced-main
 npm install
 cd ../..
-
-# 3. 配置 API 密钥（编辑 config.json）
-#   - agent.llm.api_key: DeepSeek API Key (platform.deepseek.com)
-#   - tts.app_id + tts.token: 火山引擎 TTS (console.volcengine.com)
-#   - netease.cookie + netease.uid: 网易云音乐 (浏览器 F12 获取)
-#   - weather.api_key: OpenWeatherMap (可选，不填也能用)
 ```
 
-### 启动
+复制或参考 `config_example.json` 配置 `config.json`。常用字段：
+- `agent.llm.api_key`: DeepSeek API Key
+- `tts.app_id` 和 `tts.token`: 火山引擎 TTS
+- `netease.cookie` 和 `netease.uid`: 网易云音乐登录信息
+- `weather.api_key`: OpenWeatherMap，可选
+
+启动方式：
+
+```text
+start_dj.bat
+```
+
+也可以手动启动：
 
 ```bash
-# 方式 1: 一键启动（推荐）
-双击 start_dj.bat
-
-# 方式 2: 手动启动
-cd NeteaseCloudMusicApi/api-enhanced-main && node app.js &   # 端口 3000
-cd backend && python dj_server.py                             # 端口 8765
+cd NeteaseCloudMusicApi/api-enhanced-main
+node app.js
 ```
 
-浏览器打开 `http://localhost:8765`。DJ 会自动打招呼并开始放歌。
+```bash
+cd backend
+python dj_server.py
+```
 
-## 使用说明
+浏览器打开：
 
-### 听歌
+```text
+http://127.0.0.1:8765/
+```
 
-打开页面后 DJ 自动开始。当前播放的歌曲信息显示在中央面板。
+## How To Use
 
-| 操作 | 方式 |
-|------|------|
-| 播放/暂停 | 点击 ▶ 按钮或按空格 |
-| 下一首 | 点击 ⏭ 或按 → |
-| 上一首 | 点击 ⏮ 或按 ← |
-| 导入歌曲 | 点击 📁 按钮，输入文件夹路径 |
-| 调节音量 | 拖动底部滑块 |
+听歌：
+- 页面打开后默认进入 DJ 模式。
+- 顶部音乐舞台显示当前歌曲、歌手、播放状态、频谱、进度和控制按钮。
+- 播放/暂停：点击播放按钮或按空格。
+- 上一首/下一首：点击按钮或按左右方向键。
+- 进度和音量：使用舞台控件，也可以聊天说“音量调到 50”。
+- 歌单、搜索、导入：使用顶部工具按钮或歌单抽屉。
+- 如果浏览器阻止自动播放，DJ 文案会先显示，点击播放或开台提示后继续播放待播歌曲。
 
-DJ 模式下每首歌之间 DJ 会说一段串词，然后自动选出下一首歌。
+和 DJ 聊天：
+- 底部 DJ 稿纸区有小输入条。
+- 闲聊示例：`今天有点累`、`陪我聊会儿`、`你觉得我该怎么办`。
+- 音乐指令示例：`放 RADWIMPS 的 前前前世`、`搜一下周杰伦 晴天`、`推荐一首适合现在听的`、`听点日语的`、`切歌`、`暂停一下`、`声音小点`。
+- 前后端都有 music-intent guard。没有明确音乐意图时，即使模型误生成 `[[play]]` 或 `[[recommend]]`，也应该只显示聊天文本，不执行隐藏播放动作。
 
-### 和 DJ 聊天
+场景和模式：
+- 随便听听：按当前口味自然推荐。
+- 学习/工作：安静、专注、低干扰。
+- 放松：氛围感、沉浸式。
+- 运动：节奏和能量。
+- 睡前：安静、助眠、钢琴或氛围。
+- DJ 模式是默认模式，会主动开台、说串词、智能选歌。
+- 普通听歌模式只顺序播放歌单，不做 AI 编排。
 
-右侧聊天面板直接打字。DJ 可以：
+## Configuration
 
-- **闲聊**: "今天心情不错"
-- **搜歌**: "搜一下周杰伦的晴天"
-- **放歌**: "放RADWIMPS的前前前世"（自动从网易云搜索播放，不限于歌单）
-- **切歌**: "切歌"或"换一首"
-- **推荐**: "推荐一首适合现在听的"
-- **调音量**: "音量调到50"
-
-DJ 会用语音回复。如果不想听语音，关掉页面音量即可，文字仍然显示。
-
-### 调整口味
-
-点击活动标签告诉 DJ 你在做什么：
-
-| 标签 | 效果 |
-|------|------|
-| 随便听听 | 按品味自然推荐 |
-| 📚 学习 | 安静背景音乐，不吵 |
-| 💼 工作 | 专注向，轻音乐/后摇 |
-| 🛋️ 放松 | 氛围感，沉浸式 |
-| 🏃 运动 | 有节奏有能量 |
-| 🌙 睡前 | 安静助眠，钢琴/氛围 |
-
-### 双模式
-
-- **DJ 模式**: AI 策展 + 串词 + 主动插话（默认）
-- **Normal 模式**: 顺序播放歌单，无 AI
-
-点击顶部 ON AIR 旁边的按钮切换。
-
-## 配置
-
-### config.json 说明
+配置以 `config_example.json` 为准，README 只列核心含义：
 
 ```json
 {
   "app": { "port": 8765 },
   "dj": {
     "name": "clauseekio",
-    "style": "嘴碎但走心的深夜DJ，像跟老朋友连麦",
-    "voice": "zh-CN"
+    "style": "嘴碎但走心的深夜DJ"
   },
   "agent": {
     "pool_size": 15,
     "discovery_ratio": 0.85,
     "llm": {
-      "api_key": "你的DeepSeek Key",
+      "api_key": "your-deepseek-key",
       "base_url": "https://api.deepseek.com",
-      "model": "deepseek-chat",
-      "temperature": 1.05,
-      "max_tokens": 500
+      "model": "deepseek-chat"
     }
   },
   "tts": {
     "provider": "volcano",
-    "app_id": "火山引擎AppID",
-    "token": "火山引擎Token",
-    "voice_type": "BV700_V2_streaming",
-    "ssml_enabled": true,
+    "app_id": "your-volcano-app-id",
+    "token": "your-volcano-token",
     "streaming_enabled": true,
-    "realtime_voice": { "enabled": true, "model": "O2.0" }
+    "realtime_voice": { "enabled": true }
   },
   "netease": {
     "enabled": true,
     "api_host": "http://localhost:3000",
-    "cookie": "你的网易云Cookie",
-    "uid": "你的网易云UID"
-  },
-  "weather": {
-    "api_key": "OpenWeatherMap Key（可选）",
-    "city": "Chengdu,CN"
-  },
-  "scheduler": {
-    "enabled": true,
-    "check_interval_seconds": 30,
-    "global_cooldown_minutes": 2
+    "cookie": "your-netease-cookie",
+    "uid": "your-netease-uid"
   }
 }
 ```
 
-### 功能开关
+常用开关：
+- `tts.streaming_enabled`: 控制是否使用流式 TTS。
+- `tts.realtime_voice.enabled`: 控制聊天语音是否使用实时语音。
+- `scheduler.enabled`: 控制主动插话调度。
+- `agent.discovery_ratio`: 控制网易云发现和本地歌单的混合倾向。
 
-所有开关都在 config.json 中，设为 false 即可回退：
+## Project Structure
 
-| 开关 | 位置 | 作用 |
-|------|------|------|
-| `ssml_enabled` | tts | 关掉则回到纯文本 TTS |
-| `streaming_enabled` | tts | 关掉则回到一次性 HTTP TTS |
-| `realtime_voice.enabled` | tts | 关掉则 Chat 走 SSML TTS |
-| `scheduler.enabled` | scheduler | 关掉则停止主动插话 |
-| `discovery_ratio` | agent | 0=纯歌单，1=纯网易云发现 |
-
-## 文件结构
-
-```
+```text
 musicDJ/
 ├── backend/
-│   ├── dj_server.py            # Flask 后端，所有 API 路由
-│   ├── collect_listening_data.py
+│   ├── dj_server.py             # Flask 后端入口和 API 路由
+│   ├── collect_listening_data.py # 网易云听歌数据采集
 │   └── agent/
-│       ├── dj_brain.py         # 大脑：选歌+串词+编排
-│       ├── llm_provider.py     # DeepSeek API
-│       ├── prompts.py          # 提示词模板
-│       ├── actions.py          # DJ 动作解析
-│       ├── context.py          # 上下文组装
-│       ├── memory.py           # SQLite 记忆
-│       ├── scheduler.py        # 主动插话调度
-│       ├── rules.py            # 插话触发规则
-│       ├── song_picker.py      # 候选歌池构建
-│       ├── taste_profile.py    # 品味画像
-│       ├── music_discovery.py  # 网易云搜索发现
-│       ├── tts_provider.py     # 火山 TTS (SSML+流式)
-│       ├── realtime_voice.py   # 实时语音 WebSocket
-│       └── session.py          # 会话管理
+│       ├── dj_brain.py          # DJ 决策核心：开台、选歌、串词、记忆
+│       ├── song_picker.py       # 分桶随机候选池
+│       ├── runtime_taste.py     # 运行时口味评分和歌曲标签
+│       ├── music_discovery.py   # 网易云发现搜索
+│       ├── taste_profile.py     # 离线口味画像读取和搜索画像
+│       ├── memory.py            # SQLite 长期记忆
+│       ├── prompts.py           # DJ prompt 模板
+│       ├── tts_provider.py      # 火山 TTS
+│       └── realtime_voice.py    # 实时语音 WebSocket
 ├── frontend/
-│   └── index.html              # 单文件 SPA
+│   └── index.html               # React/Babel 单文件前端
 ├── user_profile/
-│   ├── taste.md                # 音乐口味画像
-│   ├── routines.md             # 作息场景
-│   └── mood-rules.md           # 情绪场景规则
+│   └── taste.md                 # 人工口味偏好
 ├── data/
-│   ├── playlist.json           # 播放列表
-│   ├── state.db                # SQLite 记忆库
-│   ├── personality.json        # fallback 串词库
-│   └── listening_history/      # 网易云监听数据
-├── NeteaseCloudMusicApi/       # 网易云 API (Node.js)
-├── config.json                 # 全局配置
-└── start_dj.bat               # 一键启动
+│   ├── playlist.json            # 当前歌单
+│   ├── listening_stats.json     # 运行时播放统计
+│   ├── state.db                 # SQLite DJ 记忆
+│   └── listening_history/       # 网易云听歌历史和处理后的口味画像
+├── NeteaseCloudMusicApi/        # 网易云 API 服务
+├── config_example.json          # 配置模板
+├── config.json                  # 本地配置，含私密信息
+└── start_dj.bat                 # 一键启动
 ```
 
-## DJ 工作原理
+## How The DJ Works
 
-### 选歌
+开台：
+- 前端的 `runOpeningShow` 会在 DJ 模式下尝试主动开台。
+- 后端 transition 返回 `selected_song` 后，前端写入 `pendingSong`。
+- DJ 先显示/播报串词，再播放这首待播歌曲。
 
-1. 根据品味画像（top 艺人、偏好流派）生成搜索词
-2. 结合当前时段、天气、活动
-3. 从网易云曲库搜索候选歌曲
-4. 候选池 85% 新歌 + 15% 歌单混合
-5. LLM 选出最适合此刻的一首
+选歌：
+- 离线口味画像来自 `training_songs_top300.json`、歌手统计和 `user_profile/taste.md`。
+- 运行时统计来自 `listening_stats.json` 的播放次数和最近播放时间。
+- 长期记忆来自 `state.db` 中的 skip、like、transition 和 song interaction。
+- 网易云发现会按语种、风格、时间、天气和活动场景搜索。
+- `song_picker.py` 用熟悉锚点、少听本地歌、fresh discovery 分桶抽样。
+- LLM 最后从候选池里选择适合当前氛围的一首，并生成理由和串词。
 
-### 串词
+串词：
+- 串词实时生成，应该自然、短而有画面感。
+- 核心约束是 DJ 说到的下一首歌必须和实际播放的 `pendingSong` 一致。
 
-每句串词实时生成：
-- 提到具体歌名和歌手
-- 根据时段/天气/聊天内容调整语气
-- SSML 控制语速、语调、停顿、重音
-- 不报播放次数
+聊天：
+- 聊天接口会流式返回文本和语音。
+- 前端有顺序播放队列，保证聊天语音播完后才执行可能产生第二句语音的动作。
+- 无音乐意图时，后端会清理动作标记，前端也会阻止动作执行。
 
-### 记忆
+记忆：
+- 最近播过的歌会降权或避开。
+- 跳过的歌和歌手会被记录。
+- 喜欢、完整听完、重复播放会影响倾向。
+- 当前聊天上下文会影响下一首歌的氛围。
 
-DJ 会记住：
-- 你跳过了哪些歌（避免再选）
-- 你喜欢哪些歌
-- 刚才聊天说了什么（影响下一首选歌）
+## Data And Privacy
 
-## 常见问题
+- `config.json` 可能包含 API Key、网易云 Cookie 和 UID，不要公开。
+- `data/playlist.json`、`data/state.db`、`data/listening_stats.json` 是个人数据，不要随意删除。
+- `.gitignore` 已覆盖部分运行时文件，但已经被 Git 跟踪过的文件仍可能出现在 `git status`。
+- 网易云发现依赖本地 `NeteaseCloudMusicApi` 服务和可用 Cookie。
 
-**Q: DJ 只放歌单的歌？**
-A: 确认网易云 API 在运行（页面顶部显示 Netease: Connected）。用 `start_dj.bat` 启动会自动拉起。
+## Troubleshooting
 
-**Q: 语音有叠音？**
-A: 已修复，新语音播放前自动停止旧语音。
+**Q: 网易云搜索或播放失败？**
+A: 确认 `NeteaseCloudMusicApi` 在 `http://localhost:3000` 运行，并检查 `config.json` 里的 Cookie 和 UID。
 
-**Q: 怎么让 DJ 放歌单里没有的歌？**
-A: 直接跟 DJ 说"放XXX"，DJ 会自动搜网易云播放。
+**Q: DJ 不主动开台？**
+A: 确认后端运行正常，页面在 DJ 模式。浏览器可能阻止自动播放，点击播放按钮或开台提示继续。
 
-**Q: 没配置 API 密钥能用吗？**
-A: 能启动，但只能用 fallback 模式（简单串词模板，无 AI）。
+**Q: TTS 没声音？**
+A: 检查火山 TTS 配置。如果 realtime voice 不可用，可以在配置里关闭实时语音或切到普通 TTS。
 
-**Q: 支持什么音频格式？**
-A: MP3 / FLAC / WAV / M4A / OGG / AAC / WMA / Opus / NCM。
+**Q: 闲聊时 DJ 仍然推歌？**
+A: 需要继续收紧 music-intent guard。当前设计目标是普通聊天不执行 `[[play]]` 或 `[[recommend]]`。
 
-## 鸣谢
-
-- 灵感来源：[Claudio](https://github.com/hllqkb/Claudio) — AI 电台 DJ
-- 网易云音乐 API 基于 [NeteaseCloudMusicApiEnhanced/api-enhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced)（MIT 协议）
+**Q: 为什么推荐还是有点重复？**
+A: 检查 `listening_stats.json`、`state.db` 和 runtime taste key 是否能正确匹配歌曲，尤其是本地文件歌。
 
 ## License
 
-MIT
+Personal/local project. Use and modify for your own setup.
