@@ -98,6 +98,35 @@ class RuntimeTasteScorer:
     # ── Internal scoring ──
 
     @staticmethod
+    def _hours_since(timestamp) -> float | None:
+        """Return hours since a stored play timestamp.
+
+        listening_stats.json stores ISO strings today, but older/runtime data may
+        contain Unix timestamps. Treat malformed or missing values as never
+        played instead of breaking song selection.
+        """
+        if not timestamp:
+            return None
+        try:
+            if isinstance(timestamp, (int, float)):
+                played_at = datetime.fromtimestamp(float(timestamp), tz=timezone.utc)
+            else:
+                value = str(timestamp).strip()
+                if not value:
+                    return None
+                if value.endswith("Z"):
+                    value = value[:-1] + "+00:00"
+                played_at = datetime.fromisoformat(value)
+                if played_at.tzinfo is None:
+                    played_at = played_at.replace(tzinfo=timezone.utc)
+                else:
+                    played_at = played_at.astimezone(timezone.utc)
+            delta = datetime.now(timezone.utc) - played_at
+            return max(0.0, delta.total_seconds() / 3600)
+        except Exception:
+            return None
+
+    @staticmethod
     def _freshness_score(hours_since: float | None) -> float:
         """Freshness bonus: higher = longer since last play. Penalty for <24h."""
         if hours_since is None:

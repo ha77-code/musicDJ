@@ -1004,9 +1004,43 @@ def api_agent_transition():
     playlist_data = load_json(PLAYLIST_PATH, {"songs": [], "current_index": -1})
     playlist = playlist_data.get("songs", [])
 
-    action, selected_song = dj_brain.think_transition(
-        current_song, None, weather_data, history, user_activity, playlist,
-        chat_context=chat_context, scene=scene)
+    try:
+        action, selected_song = dj_brain.think_transition(
+            current_song, None, weather_data, history, user_activity, playlist,
+            chat_context=chat_context, scene=scene)
+    except Exception as e:
+        print(f"[agent/transition] DJBrain failed, using server fallback: {e}")
+        action, selected_song = None, None
+
+    server_selected_fallback = False
+    if not selected_song and playlist:
+        cur_id = str(current_song.get("netease_id") or current_song.get("path") or "")
+        cur_idx = -1
+        for i, song in enumerate(playlist):
+            sid = str(song.get("netease_id") or song.get("path") or "")
+            if sid and sid == cur_id:
+                cur_idx = i
+                break
+        if cur_idx < 0:
+            cur_idx = playlist_data.get("current_index", -1)
+        next_idx = ((cur_idx if isinstance(cur_idx, int) and cur_idx >= 0 else -1) + 1) % len(playlist)
+        selected_song = dict(playlist[next_idx])
+        selected_song["playlist_index"] = next_idx
+        server_selected_fallback = True
+
+    if action is None:
+        from agent.actions import DJAction
+        action = DJAction()
+
+    if (server_selected_fallback or not getattr(action, "say", "")) and selected_song:
+        title = selected_song.get("title") or "这首歌"
+        artist = selected_song.get("artist") or "这位歌手"
+        action.say = f"我给你接到 {artist} 的《{title}》，这一段我们顺着感觉往前走。"
+        action.reason = action.reason or "DJ transition fallback"
+        action.mood = action.mood or "chill"
+        action.action = "play_selected"
+    elif selected_song and getattr(action, "action", "") != "play_selected":
+        action.action = "play_selected"
 
     resp = {
         "say": action.say,
@@ -1482,9 +1516,13 @@ def api_agent_transition_stream():
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+@app.route("/api/agent/segment", methods=["POST"])
 @app.route("/api/agent/radio-segment", methods=["POST"])
 def api_radio_segment():
-    """Generate a radio segment plan (DJ intro + 2-3 songs)."""
+    """Generate a radio segment plan (DJ intro + 1-3 songs).
+    Returns: { summary, scene, items, selected_song, dj_lines, weather, time }
+    items: [{ type: "tts"|"song"|"silence", ... }]
+    selected_song: { title, artist, source, netease_id, path, playlist_index }"""
     data = request.get_json()
     current_song = data.get("current_song", {})
     weather_data = data.get("weather", None)

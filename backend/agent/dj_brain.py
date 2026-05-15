@@ -812,16 +812,68 @@ class DJBrain:
 
         if not dj_lines:
             # Fallback DJ lines
+            first_song = top_n[0] if top_n else {"artist": "这位歌手", "title": "这首歌"}
+            first_artist = first_song.get("artist") or "这位歌手"
+            first_title = first_song.get("title") or "这首歌"
             dj_lines = [
                 {"position": "intro",
-                 "text": f"来，接下来几首给你安排好了。先听{top_n[0]['artist']}的{top_n[0]['title']}。",
+                 "text": f"来，接下来几首给你安排好了。先听 {first_artist} 的《{first_title}》。",
                  "mood": "chill"},
             ]
 
+        # Build unified segment plan items
+        items = []
+        # First: DJ intro as tts item
+        if dj_lines:
+            intro = dj_lines[0]
+            items.append({
+                "type": "tts",
+                "text": intro.get("text", ""),
+                "mood": intro.get("mood", "chill"),
+                "position": "intro",
+            })
+
+        # Songs as song items with full playable fields
+        for i, s in enumerate(song_plan):
+            items.append({
+                "type": "song",
+                "title": s["title"],
+                "artist": s["artist"],
+                "source": s.get("source", "local"),
+                "netease_id": s.get("netease_id", ""),
+                "path": s.get("path", ""),
+                "playlist_index": s.get("playlist_index", -1),
+                "position": "song_{}".format(i),
+            })
+
+        # Outro as tts item (if present)
+        if len(dj_lines) > 1:
+            outro = dj_lines[1]
+            items.append({
+                "type": "tts",
+                "text": outro.get("text", ""),
+                "mood": outro.get("mood", "chill"),
+                "position": "outro",
+            })
+
+        # selected_song: first song item for frontend playability
+        selected_song = song_plan[0] if song_plan else None
+        if selected_song:
+            selected_song = {
+                "title": selected_song["title"],
+                "artist": selected_song["artist"],
+                "source": selected_song.get("source", "local"),
+                "netease_id": selected_song.get("netease_id", ""),
+                "path": selected_song.get("path", ""),
+                "playlist_index": selected_song.get("playlist_index", -1),
+            }
+
         return {
-            "songs": song_plan,
-            "dj_lines": dj_lines,
+            "summary": dj_lines[0].get("text", "") if dj_lines else "",
             "scene": time_info["period"],
+            "items": items,
+            "selected_song": selected_song,
+            "dj_lines": dj_lines,
             "weather": weather_desc,
             "time": time_info["time_str"],
         }

@@ -591,8 +591,95 @@
     flex: 1;
     min-width: 2px;
     border-radius: 999px 999px 0 0;
-    background: linear-gradient(to top, rgba(255, 255, 255, 0.9), rgba(167, 243, 208, 0.18));
+    background: linear-gradient(to top, var(--stage-accent-glow), var(--stage-accent-soft));
     animation: breathe 2.8s ease-in-out infinite;
+  }
+
+  /* ── Color mode toggle ── */
+  .color-mode-toggle {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    border-radius: 999px;
+    cursor: pointer;
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.14);
+    transition: background 0.25s, border-color 0.25s;
+    flex-shrink: 0;
+  }
+  .color-mode-toggle.active {
+    background: var(--stage-accent-soft);
+    border-color: var(--stage-accent-line);
+  }
+  .color-mode-toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.7);
+    transition: transform 0.22s, background 0.22s;
+  }
+  .color-mode-toggle.active::after {
+    transform: translateX(18px);
+    background: var(--stage-accent);
+  }
+
+  /* ── Karaoke lyric panel ── */
+  .lyric-karaoke {
+    width: min(100%, 560px);
+    margin-top: 18px;
+    padding: 10px 0;
+    position: relative;
+    max-height: 110px;
+    overflow: hidden;
+    transition: max-height 0.3s;
+  }
+  .lyric-karaoke:hover {
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  .lyric-karaoke .lyric-line {
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.55;
+    transition: all 0.35s;
+    position: relative;
+  }
+  .lyric-karaoke .lyric-line.prev {
+    color: rgba(240, 255, 247, 0.35);
+    font-size: 12px;
+    opacity: 0.6;
+  }
+  .lyric-karaoke .lyric-line.current {
+    color: rgba(248, 255, 250, 0.95);
+    font-weight: 700;
+    background: linear-gradient(90deg, var(--stage-accent-soft), transparent 92%);
+    font-size: 14px;
+  }
+  .lyric-karaoke .lyric-line.current::after {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: calc(var(--lyric-progress, 0) * 1%);
+    background: linear-gradient(90deg, var(--stage-accent-soft), var(--stage-accent-line));
+    border-radius: 8px;
+    opacity: 0.55;
+    pointer-events: none;
+    z-index: -1;
+  }
+  .lyric-karaoke .lyric-line.next {
+    color: rgba(240, 255, 247, 0.45);
+    font-size: 12px;
+  }
+  .lyric-trans {
+    font-size: 11px;
+    color: rgba(240, 255, 247, 0.4);
+    padding-left: 2px;
+    margin-top: 1px;
   }
 
   .stage-control-deck {
@@ -1106,10 +1193,12 @@
       font-size: clamp(24px, 8vw, 36px);
     }
 
-    .lyric-pill {
+    .lyric-karaoke {
       margin-top: 12px;
-      padding: 9px 12px;
-      font-size: 12px;
+      max-height: 90px;
+    }
+    .lyric-karaoke:hover {
+      max-height: 180px;
     }
 
     .rhythm-deck {
@@ -1263,6 +1352,22 @@ function parseLrc(lrc) {
   }
   lines.sort((a, b) => a.time - b.time);
   return lines;
+}
+function parseTlyric(tlyric, lrcLines) {
+  // Map translation lines to original LRC lines by time
+  if (!tlyric) return {};
+  const tLines = parseLrc(tlyric);
+  const map = {};
+  for (const tl of tLines) {
+    // Find closest LRC line
+    let best = null, bestDist = Infinity;
+    for (const ll of lrcLines) {
+      const d = Math.abs(tl.time - ll.time);
+      if (d < 0.8 && d < bestDist) { best = ll; bestDist = d; }
+    }
+    if (best) map[best.time] = tl.text;
+  }
+  return map;
 }
 
 // ── Music intent detection ──
@@ -1430,19 +1535,117 @@ function normalizeHexColor(value) {
 }
 
 function hexToRgb(hex) {
-  const v = parseInt(hex.slice(1), 16);
+  const safeHex = normalizeHexColor(hex) || STAGE_ACCENT_DEFAULT;
+  const v = parseInt(safeHex.slice(1), 16);
   return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
 }
 
+function rgbToHex(r, g, b) {
+  return '#' + [r, g, b].map(c => {
+    const v = Math.round(Math.min(255, Math.max(0, c)));
+    return v.toString(16).padStart(2, '0');
+  }).join('');
+}
+
 function deriveAccentTokens(hex) {
-  const { r, g, b } = hexToRgb(hex);
+  const safeHex = normalizeHexColor(hex) || STAGE_ACCENT_DEFAULT;
+  let { r, g, b } = hexToRgb(safeHex);
+  // Generate --stage-accent-strong: brighter + more saturated than base
+  const maxC = Math.max(r, g, b);
+  const boost = maxC < 200 ? Math.min(48, 255 - maxC) : 0;
+  let sr = r, sg = g, sb = b;
+  if (boost > 0) {
+    sr = Math.min(255, r + (r === maxC ? boost : boost * 0.25));
+    sg = Math.min(255, g + (g === maxC ? boost : boost * 0.25));
+    sb = Math.min(255, b + (b === maxC ? boost : boost * 0.25));
+  }
+  const strongHex = rgbToHex(sr, sg, sb);
   return {
-    '--stage-accent': hex,
-    '--stage-accent-strong': hex, /* brightened via filter in JS when needed */
+    '--stage-accent': safeHex,
+    '--stage-accent-strong': strongHex,
     '--stage-accent-soft': `rgba(${r},${g},${b},0.28)`,
     '--stage-accent-line': `rgba(${r},${g},${b},0.32)`,
     '--stage-accent-glow': `rgba(${r},${g},${b},0.55)`,
   };
+}
+
+// ── Cover color extraction ──
+function _colorDist(a, b) {
+  const dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
+  return dr * dr + dg * dg + db * db;
+}
+function _kmeans(pixels, k) {
+  let centers = [];
+  for (let i = 0; i < k; i++) {
+    const idx = Math.floor(Math.random() * pixels.length);
+    centers.push([pixels[idx][0], pixels[idx][1], pixels[idx][2]]);
+  }
+  for (let iter = 0; iter < 6; iter++) {
+    const clusters = Array.from({ length: k }, () => []);
+    for (let pi = 0; pi < pixels.length; pi++) {
+      const p = pixels[pi];
+      let minD = Infinity, minI = 0;
+      for (let c = 0; c < k; c++) {
+        const d = _colorDist(p, centers[c]);
+        if (d < minD) { minD = d; minI = c; }
+      }
+      clusters[minI].push(p);
+    }
+    for (let c = 0; c < k; c++) {
+      if (!clusters[c].length) continue;
+      let sr = 0, sg = 0, sb = 0;
+      for (const pi of clusters[c]) { sr += pi[0]; sg += pi[1]; sb += pi[2]; }
+      const n = clusters[c].length;
+      centers[c] = [Math.round(sr / n), Math.round(sg / n), Math.round(sb / n)];
+    }
+  }
+  return centers.map(c => {
+    const max = Math.max(c[0], c[1], c[2]), min = Math.min(c[0], c[1], c[2]);
+    return { r: c[0], g: c[1], b: c[2], sat: max === 0 ? 0 : (max - min) / max };
+  });
+}
+function extractCoverColor(imageUrl) {
+  if (!imageUrl) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    const timer = setTimeout(() => { resolve(null); }, 4000);
+    img.onload = () => {
+      clearTimeout(timer);
+      try {
+        const cvs = document.createElement('canvas');
+        cvs.width = 64; cvs.height = 64;
+        const ctx = cvs.getContext('2d');
+        ctx.drawImage(img, 0, 0, 64, 64);
+        const data = ctx.getImageData(0, 0, 64, 64).data;
+        const pixels = [];
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i + 1], b = data[i + 2];
+          const max = Math.max(r, g, b), min = Math.min(r, g, b);
+          const sat = max === 0 ? 0 : (max - min) / max;
+          const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+          if (lum < 0.08 || lum > 0.92 || sat < 0.12) continue;
+          pixels.push([r, g, b, sat * Math.min(lum + 0.15, 1)]);
+        }
+        if (pixels.length < 20) { resolve(null); return; }
+        const clusters = _kmeans(pixels, 3);
+        clusters.sort((a, b) => b.sat - a.sat);
+        const best = clusters[0];
+        // Lightness boost for dark accent colors
+        const bestLum = (0.299 * best.r + 0.587 * best.g + 0.114 * best.b) / 255;
+        let R = best.r, G = best.g, B = best.b;
+        if (bestLum < 0.25) {
+          const lift = Math.round((0.28 - bestLum) * 180);
+          R = Math.min(255, R + lift);
+          G = Math.min(255, G + lift);
+          B = Math.min(255, B + lift);
+        }
+        resolve(rgbToHex(R, G, B));
+      } catch (e) { resolve(null); }
+    };
+    img.onerror = () => { clearTimeout(timer); resolve(null); };
+    img.src = imageUrl;
+  });
 }
 
 function applyStageAccent(el, hex) {
@@ -1463,6 +1666,15 @@ function loadSavedStageAccent() {
 function saveStageAccent(hex) {
   try { localStorage.setItem('dj_stage_accent', hex); } catch {}
 }
+function loadSavedStageAccentMode() {
+  try {
+    const mode = localStorage.getItem('dj_stage_accent_mode');
+    return mode === 'cover' || mode === 'manual' ? mode : 'manual';
+  } catch { return 'manual'; }
+}
+function saveStageAccentMode(mode) {
+  try { localStorage.setItem('dj_stage_accent_mode', mode === 'cover' ? 'cover' : 'manual'); } catch {}
+}
 
 /* ═════════════════════════════════════════════════
  * 3. State Reducer
@@ -1476,6 +1688,7 @@ const initialState = {
   playlist: { songs: [], current_index: -1 },
   currentSong: null,
   lyricsLines: [],
+  lyricTrans: {},
   currentLyricIndex: -1,
   currentMode: 'dj',
   appState: 'idle',
@@ -1495,7 +1708,11 @@ const initialState = {
   directPlay: false,
   voiceMode: 'realtime',
   openingBlocked: false,
+  needsUserAction: false,
+  playbackFlow: 'idle',
+  activeCueToken: 0,
   stageAccent: loadSavedStageAccent() || STAGE_ACCENT_DEFAULT,
+  stageAccentMode: loadSavedStageAccentMode(),
 };
 
 function reducer(state, action) {
@@ -1507,8 +1724,13 @@ function reducer(state, action) {
     case 'SET_PLAYLIST': return { ...state, playlist: action.payload };
     case 'SET_CURRENT_INDEX': return { ...state, playlist: { ...state.playlist, current_index: action.payload } };
     case 'SET_CURRENT_SONG': return { ...state, currentSong: action.payload };
-    case 'SET_LYRICS': return { ...state, lyricsLines: parseLrc(action.payload), currentLyricIndex: -1 };
-    case 'CLEAR_LYRICS': return { ...state, lyricsLines: [], currentLyricIndex: -1 };
+    case 'SET_LYRICS': {
+      const lines = parseLrc(action.payload.lrc || action.payload);
+      const trans = typeof action.payload === 'object' && action.payload.tlyric
+        ? parseTlyric(action.payload.tlyric, lines) : {};
+      return { ...state, lyricsLines: lines, lyricTrans: trans, currentLyricIndex: -1 };
+    }
+    case 'CLEAR_LYRICS': return { ...state, lyricsLines: [], lyricTrans: {}, currentLyricIndex: -1 };
     case 'SET_LYRIC_INDEX': return { ...state, currentLyricIndex: action.payload };
     case 'SET_MODE': return { ...state, currentMode: action.payload };
     case 'SET_APP_STATE': return { ...state, appState: action.payload };
@@ -1531,7 +1753,11 @@ function reducer(state, action) {
     case 'SET_DIRECT_PLAY': return { ...state, directPlay: action.payload.direct };
     case 'SET_VOICE_MODE': return { ...state, voiceMode: action.payload };
     case 'SET_OPENING_BLOCKED': return { ...state, openingBlocked: action.payload };
+    case 'SET_NEEDS_USER_ACTION': return { ...state, needsUserAction: action.payload };
+    case 'SET_PLAYBACK_FLOW': return { ...state, playbackFlow: action.payload };
+    case 'SET_ACTIVE_CUE_TOKEN': return { ...state, activeCueToken: action.payload };
     case 'SET_STAGE_ACCENT': return { ...state, stageAccent: action.payload };
+    case 'SET_STAGE_ACCENT_MODE': return { ...state, stageAccentMode: action.payload };
     default: return state;
   }
 }
@@ -1543,6 +1769,8 @@ function reducer(state, action) {
 // ── Audio Player ──
 function useAudioPlayer(audioRef, state, dispatch) {
   const seekPending = useRef(false);
+  const pendingPlayRef = useRef(false);
+  const lastPlayErrorRef = useRef(null);
 
   const loadSong = useCallback((idx) => {
     const songs = state.playlist.songs;
@@ -1564,33 +1792,83 @@ function useAudioPlayer(audioRef, state, dispatch) {
     dispatch({ type: 'SET_DIRECT_PLAY', payload: { direct: false, song: null } });
   }, [state.playlist.songs]);
 
-  const play = useCallback(async () => {
+  const play = useCallback(async (opts = {}) => {
     const audio = audioRef.current;
-    if (!audio) return;
-    if (state.openingBlocked && state.pendingSong) return;
+    if (!audio) return { status: 'failed', error: 'missing_audio' };
+    if (!opts.allowPending && state.pendingSong && (state.openingBlocked || state.needsUserAction)) {
+      return { status: 'blocked', error: 'pending_song_waiting' };
+    }
     if ((!audio.src || audio.src === window.location.href) && state.playlist.songs.length > 0) {
       const idx = state.playlist.current_index >= 0 ? state.playlist.current_index : 0;
       loadSong(idx);
-      setTimeout(() => audio.play().catch(() => {}), 100);
-      return;
+      pendingPlayRef.current = true;
+      setTimeout(() => {
+        audio.play().catch((e) => {
+          lastPlayErrorRef.current = e;
+          pendingPlayRef.current = false;
+          dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: true });
+          dispatch({ type: 'SET_OPENING_BLOCKED', payload: true });
+          dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'waiting_user_action' });
+        });
+      }, 100);
+      return { status: 'waiting' };
     }
     try {
-      await audio.play();
-    } catch (e) {
-      if (e.name === 'NotSupportedError') {
-        audio.addEventListener('canplay', () => audio.play().catch(() => {}), { once: true });
+      pendingPlayRef.current = true;
+      if (audio.readyState >= 3 || opts.fromUserGesture) {
+        await audio.play();
+        pendingPlayRef.current = false;
+        lastPlayErrorRef.current = null;
+        dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: false });
+        dispatch({ type: 'SET_OPENING_BLOCKED', payload: false });
+        dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'song_playing' });
+        return { status: 'playing' };
       }
+      return { status: 'waiting' };
+    } catch (e) {
+      lastPlayErrorRef.current = e;
+      pendingPlayRef.current = false;
+      if (e?.name === 'NotSupportedError') {
+        audio.addEventListener('canplay', () => play(opts), { once: true });
+        return { status: 'waiting', error: e };
+      }
+      dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: true });
+      dispatch({ type: 'SET_OPENING_BLOCKED', payload: true });
+      dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'waiting_user_action' });
+      return { status: 'blocked', error: e };
     }
-  }, [state.openingBlocked, state.pendingSong, state.playlist.songs.length, state.playlist.current_index, loadSong]);
+  }, [state.openingBlocked, state.needsUserAction, state.pendingSong, state.playlist.songs.length, state.playlist.current_index, loadSong]);
+
+  const retryPlayFromUserGesture = useCallback(async () => {
+    const audio = audioRef.current;
+    if (!audio) return { status: 'failed', error: 'missing_audio' };
+    try {
+      pendingPlayRef.current = true;
+      await audio.play();
+      pendingPlayRef.current = false;
+      lastPlayErrorRef.current = null;
+      dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: false });
+      dispatch({ type: 'SET_OPENING_BLOCKED', payload: false });
+      dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'song_playing' });
+      return { status: 'playing' };
+    } catch (e) {
+      lastPlayErrorRef.current = e;
+      pendingPlayRef.current = false;
+      dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: true });
+      dispatch({ type: 'SET_OPENING_BLOCKED', payload: true });
+      dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'waiting_user_action' });
+      return { status: 'blocked', error: e };
+    }
+  }, []);
 
   const pause = useCallback(() => {
     audioRef.current?.pause();
   }, []);
 
   const togglePlay = useCallback(() => {
-    if (state.openingBlocked && state.pendingSong) return;
+    if ((state.openingBlocked || state.needsUserAction) && state.pendingSong) return;
     state.isPlaying ? pause() : play();
-  }, [state.openingBlocked, state.pendingSong, state.isPlaying, play, pause]);
+  }, [state.openingBlocked, state.needsUserAction, state.pendingSong, state.isPlaying, play, pause]);
 
   const nextTrack = useCallback(() => {
     const songs = state.playlist.songs;
@@ -1620,9 +1898,29 @@ function useAudioPlayer(audioRef, state, dispatch) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const onPlay = () => dispatch({ type: 'SET_PLAYING', payload: true });
+    const onPlay = () => {
+      pendingPlayRef.current = false;
+      dispatch({ type: 'SET_PLAYING', payload: true });
+      dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: false });
+      dispatch({ type: 'SET_OPENING_BLOCKED', payload: false });
+      dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'song_playing' });
+      dispatch({ type: 'SET_PENDING_SONG', payload: null });
+      dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+      dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
+    };
     const onPause = () => dispatch({ type: 'SET_PLAYING', payload: false });
+    const onCanPlay = () => {
+      if (!pendingPlayRef.current) return;
+      audio.play().catch((e) => {
+        lastPlayErrorRef.current = e;
+        pendingPlayRef.current = false;
+        dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: true });
+        dispatch({ type: 'SET_OPENING_BLOCKED', payload: true });
+        dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'waiting_user_action' });
+      });
+    };
     const onEnded = () => {
+      dispatch({ type: 'SET_PLAYBACK_FLOW', payload: state.currentMode === 'dj' ? 'transition_planning' : 'idle' });
       if (state.directPlay) {
         dispatch({ type: 'SET_DIRECT_PLAY', payload: { direct: false, song: null } });
         if (state.currentMode === 'dj') {
@@ -1672,12 +1970,14 @@ function useAudioPlayer(audioRef, state, dispatch) {
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoadedMeta);
+    audio.addEventListener('canplay', onCanPlay);
     return () => {
       audio.removeEventListener('play', onPlay);
       audio.removeEventListener('pause', onPause);
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('loadedmetadata', onLoadedMeta);
+      audio.removeEventListener('canplay', onCanPlay);
     };
   }, [state.directPlay, state.appState, state.isDjTalking, state.pendingSong, state.playlist, state.currentMode, state.transitionTriggered, loadSong, play, nextTrack]);
 
@@ -1689,7 +1989,7 @@ function useAudioPlayer(audioRef, state, dispatch) {
     if (audioRef.current) audioRef.current.volume = state.volume;
   }, [state.volume]);
 
-  return { loadSong, play, pause, togglePlay, nextTrack, prevTrack, seekTo };
+  return { loadSong, play, retryPlayFromUserGesture, pause, togglePlay, nextTrack, prevTrack, seekTo };
 }
 
 // ── Visualizer ──
@@ -1700,6 +2000,29 @@ function useAudioVisualizer(audioRef, isPlaying, stageAccent) {
   const analyserRef = useRef(null);
   const startedRef = useRef(false);
   const animRef = useRef(null);
+  const smoothRef = useRef(null); // attack/release smoothed values
+  const sizeRef = useRef({ w: 0, h: 0, ww: 0, wh: 0 }); // DPR size cache
+
+  const BAR_COUNT = 56;
+
+  // Pre-compute log-scale bin mapping (once)
+  const binMapRef = useRef(null);
+  const buildLogBinMap = useCallback((fftSize, barCount, sampleRate) => {
+    const binCount = fftSize / 2;
+    const nyquist = sampleRate / 2;
+    const lowFreq = 28, highFreq = 14000;
+    const logLow = Math.log10(lowFreq), logHigh = Math.log10(Math.min(highFreq, nyquist));
+    const map = [];
+    for (let i = 0; i < barCount; i++) {
+      const t = i / (barCount - 1);
+      const freq = Math.pow(10, logLow + t * (logHigh - logLow));
+      const bin = Math.round((freq / nyquist) * binCount);
+      // Average over a small window
+      const half = Math.max(1, Math.floor(binCount / barCount / 2));
+      map.push({ start: Math.max(0, bin - half), end: Math.min(binCount - 1, bin + half) });
+    }
+    return map;
+  }, []);
 
   const init = useCallback(async () => {
     if (startedRef.current) return;
@@ -1708,70 +2031,111 @@ function useAudioVisualizer(audioRef, isPlaying, stageAccent) {
       const actx = new (window.AudioContext || window.webkitAudioContext)();
       if (actx.state === 'suspended') await actx.resume();
       const analyser = actx.createAnalyser();
-      analyser.fftSize = 256;
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.7;
       const source = actx.createMediaElementSource(audioRef.current);
       source.connect(analyser);
       analyser.connect(actx.destination);
       analyserRef.current = analyser;
       ctxRef.current = actx;
+      binMapRef.current = buildLogBinMap(1024, BAR_COUNT, actx.sampleRate);
+      smoothRef.current = new Float32Array(BAR_COUNT);
     } catch (e) { console.warn('Spectrum init failed:', e); }
   }, []);
 
   useEffect(() => {
-    if (!isPlaying || !analyserRef.current) return;
+    if (!isPlaying || !analyserRef.current || !binMapRef.current) return;
+
+    const binMap = binMapRef.current;
     const draw = () => {
       const a = analyserRef.current;
       const sCanvas = spectrumRef.current;
       const wCanvas = waveformRef.current;
       if (!a || !sCanvas || !wCanvas) { animRef.current = requestAnimationFrame(draw); return; }
-      // Match canvas resolution to display size
-      if (sCanvas.clientWidth && sCanvas.width !== sCanvas.clientWidth) {
-        sCanvas.width = sCanvas.clientWidth;
-        sCanvas.height = sCanvas.clientHeight;
+
+      // DPR-aware canvas resize (only on dimension change)
+      const dpr = window.devicePixelRatio || 1;
+      const sW = sCanvas.clientWidth, sH = sCanvas.clientHeight;
+      const wW = wCanvas.clientWidth, wH = wCanvas.clientHeight;
+      if (sizeRef.current.w !== sW || sizeRef.current.h !== sH) {
+        sizeRef.current.w = sW; sizeRef.current.h = sH;
+        sCanvas.width = sW * dpr; sCanvas.height = sH * dpr;
       }
-      if (wCanvas && wCanvas.clientWidth && wCanvas.width !== wCanvas.clientWidth) {
-        wCanvas.width = wCanvas.clientWidth;
-        wCanvas.height = wCanvas.clientHeight;
+      if (sizeRef.current.ww !== wW || sizeRef.current.wh !== wH) {
+        sizeRef.current.ww = wW; sizeRef.current.wh = wH;
+        wCanvas.width = wW * dpr; wCanvas.height = wH * dpr;
       }
+
       const sCtx = sCanvas.getContext('2d');
       const wCtx = wCanvas.getContext('2d');
       const bufLen = a.frequencyBinCount;
       const freqData = new Uint8Array(bufLen);
       a.getByteFrequencyData(freqData);
-      // Spectrum
-      const SW = sCanvas.width, SH = sCanvas.height;
+
+      // ── Spectrum with log mapping + attack/release smoothing ──
+      const SW = sCanvas.width / dpr, SH = sCanvas.height / dpr;
+      sCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       sCtx.clearRect(0, 0, SW, SH);
-      const barCount = 48, barW = SW / barCount - 1;
-      for (let i = 0; i < barCount; i++) {
-        const idx = Math.floor(i * bufLen / barCount);
-        const h = (freqData[idx] / 255) * SH * 0.85;
-        const x = i * (SW / barCount);
-        const grad = sCtx.createLinearGradient(0, SH, 0, SH - h);
-        const acc = hexToRgb(stageAccent || STAGE_ACCENT_DEFAULT);
-        grad.addColorStop(0, 'rgba(248,255,249,0.88)');
-        grad.addColorStop(0.5, `rgba(${acc.r},${acc.g},${acc.b},0.62)`);
-        grad.addColorStop(1, `rgba(${acc.r},${acc.g},${acc.b},0.12)`);
+      const smooth = smoothRef.current;
+      const acc = hexToRgb(stageAccent || STAGE_ACCENT_DEFAULT);
+      const barGap = 2;
+      const totalGap = barGap * (BAR_COUNT - 1);
+      const barW = Math.max(2, (SW - totalGap) / BAR_COUNT);
+
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const { start, end } = binMap[i];
+        let sum = 0;
+        for (let j = start; j <= end; j++) sum += freqData[j];
+        const avg = sum / (end - start + 1);
+        const raw = avg / 255;
+        // Attack: fast rise (0.34), Release: slow decay (0.08)
+        const prev = smooth[i] || 0;
+        const rate = raw > prev ? 0.34 : 0.08;
+        smooth[i] = prev + rate * (raw - prev);
+        const h = smooth[i] * SH * 0.82;
+        const x = i * (barW + barGap);
+
+        // 3-stop gradient: near-white highlight → accent body → transparent tail
+        const grad = sCtx.createLinearGradient(0, SH - h, 0, SH);
+        grad.addColorStop(0, `rgba(${acc.r},${acc.g},${acc.b},0.94)`);
+        grad.addColorStop(0.38, `rgba(${acc.r},${acc.g},${acc.b},0.58)`);
+        grad.addColorStop(0.82, `rgba(${acc.r},${acc.g},${acc.b},0.14)`);
+        grad.addColorStop(1, 'transparent');
         sCtx.fillStyle = grad;
-        sCtx.fillRect(x, SH - h, barW, h);
+        // Rounded top with small rect
+        sCtx.beginPath();
+        const r = Math.min(2, barW / 2);
+        sCtx.moveTo(x, SH);
+        sCtx.lineTo(x, SH - h + r);
+        sCtx.quadraticCurveTo(x, SH - h, x + r, SH - h);
+        sCtx.lineTo(x + barW - r, SH - h);
+        sCtx.quadraticCurveTo(x + barW, SH - h, x + barW, SH - h + r);
+        sCtx.lineTo(x + barW, SH);
+        sCtx.closePath();
+        sCtx.fill();
       }
-      // Waveform
-      const WW = wCanvas.width, WH = wCanvas.height;
+
+      // ── Waveform ──
+      const WW = wCanvas.width / dpr, WH = wCanvas.height / dpr;
+      wCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const waveData = new Uint8Array(bufLen);
       a.getByteTimeDomainData(waveData);
       wCtx.clearRect(0, 0, WW, WH);
       wCtx.beginPath();
-      wCtx.strokeStyle = 'rgba(248,255,249,0.62)';
-      wCtx.lineWidth = 1.5;
-      wCtx.shadowColor = `rgba(${hexToRgb(stageAccent || STAGE_ACCENT_DEFAULT).r},${hexToRgb(stageAccent || STAGE_ACCENT_DEFAULT).g},${hexToRgb(stageAccent || STAGE_ACCENT_DEFAULT).b},0.38)`;
-      wCtx.shadowBlur = 6;
-      for (let i = 0; i < waveData.length; i++) {
+      wCtx.strokeStyle = `rgba(${acc.r},${acc.g},${acc.b},0.52)`;
+      wCtx.lineWidth = 1.6;
+      wCtx.shadowColor = `rgba(${acc.r},${acc.g},${acc.b},0.30)`;
+      wCtx.shadowBlur = 7;
+      const step = Math.max(1, Math.floor(waveData.length / (WW * 2)));
+      for (let i = 0; i < waveData.length; i += step) {
         const x = (i / waveData.length) * WW;
-        const y = (waveData[i] / 255) * WH;
-        if (i === 0) wCtx.moveTo(x, WH / 2 + (y - WH / 2) * 0.7);
-        else wCtx.lineTo(x, WH / 2 + (y - WH / 2) * 0.7);
+        const y = ((waveData[i] - 128) / 128) * WH * 0.42 + WH / 2;
+        if (i === 0) wCtx.moveTo(x, y);
+        else wCtx.lineTo(x, y);
       }
       wCtx.stroke();
       wCtx.shadowBlur = 0;
+
       animRef.current = requestAnimationFrame(draw);
     };
     animRef.current = requestAnimationFrame(draw);
@@ -1782,14 +2146,18 @@ function useAudioVisualizer(audioRef, isPlaying, stageAccent) {
 }
 
 // ── Lyrics ──
-function useLyrics(state, dispatch) {
+function useLyrics(state, dispatch, audioRef) {
+  const progressRef = useRef(null); // DOM ref for karaoke element
+  const rafRef = useRef(null);
+
   const fetchLyrics = useCallback(async (neteaseId) => {
     if (!neteaseId) { dispatch({ type: 'CLEAR_LYRICS' }); return; }
     try {
       const r = await api('/api/netease/song/lyric', 'POST', { id: neteaseId });
       const lrc = r.lrc?.lyric || r.data?.lrc?.lyric || '';
+      const tlyric = r.tlyric?.lyric || r.data?.tlyric?.lyric || '';
       if (!lrc.trim()) { dispatch({ type: 'CLEAR_LYRICS' }); return; }
-      dispatch({ type: 'SET_LYRICS', payload: lrc });
+      dispatch({ type: 'SET_LYRICS', payload: { lrc, tlyric } });
     } catch (e) { dispatch({ type: 'CLEAR_LYRICS' }); }
   }, []);
 
@@ -1805,6 +2173,34 @@ function useLyrics(state, dispatch) {
     }
   }, [state.currentTime, state.lyricsLines]);
 
+  // Lyric line progress via RAF (writes CSS var directly, avoids React re-render)
+  useEffect(() => {
+    const el = progressRef.current;
+    if (!el || !state.isPlaying || !state.lyricsLines.length) return;
+    const lines = state.lyricsLines;
+    const update = () => {
+      const audio = audioRef.current;
+      if (!audio || audio.paused) { rafRef.current = requestAnimationFrame(update); return; }
+      const t = audio.currentTime;
+      const idx = state.currentLyricIndex;
+      if (idx < 0 || idx >= lines.length - 1) {
+        el.style.setProperty('--lyric-progress', '0');
+        rafRef.current = requestAnimationFrame(update);
+        return;
+      }
+      const cur = lines[idx], next = lines[idx + 1];
+      const dur = next.time - cur.time;
+      if (dur <= 0) { el.style.setProperty('--lyric-progress', '0'); }
+      else {
+        const pct = Math.min(100, Math.max(0, ((t - cur.time) / dur) * 100));
+        el.style.setProperty('--lyric-progress', String(pct));
+      }
+      rafRef.current = requestAnimationFrame(update);
+    };
+    rafRef.current = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [state.isPlaying, state.currentLyricIndex, state.lyricsLines]);
+
   // Fetch lyrics when song changes
   useEffect(() => {
     const song = state.currentSong;
@@ -1815,7 +2211,7 @@ function useLyrics(state, dispatch) {
     }
   }, [state.currentSong?.netease_id]);
 
-  return { fetchLyrics };
+  return { fetchLyrics, progressRef };
 }
 
 // ── TTS Engine ──
@@ -2187,13 +2583,58 @@ const RhythmDeck = ({ viz, isPlaying }) => {
   );
 };
 
-const MusicStage = ({ state, dispatch, audioActions, viz, isDjTalking }) => {
+const MusicStage = ({ state, dispatch, audioActions, viz, isDjTalking, lyricProgressRef }) => {
   const song = state.currentSong || {};
   const talking = isDjTalking || state.appState === 'speaking' || state.appState === 'chatting';
-  const activeLyric = state.lyricsLines[state.currentLyricIndex]?.text
-    || state.lyricsLines[state.currentLyricIndex + 1]?.text
-    || (state.isPlaying ? '节奏已经起来了，DJ 正在听这首歌的呼吸。' : '选一首歌，我们把灯光调暗一点。');
   const cover = song.cover || song.cover_url || '';
+
+  // ── Karaoke lyric rendering ──
+  const renderKaraokeLyric = () => {
+    const lines = state.lyricsLines;
+    const idx = state.currentLyricIndex;
+    const trans = state.lyricTrans || {};
+    if (!lines.length) {
+      return (
+        <div className="lyric-karaoke">
+          <div className="lyric-line current" style={{ color: 'rgba(240,255,247,0.55)', fontWeight: 400, background: 'none', fontSize: 13 }}>
+            {state.isPlaying ? '节奏已经起来了，DJ 正在听这首歌的呼吸。' : '选一首歌，我们把灯光调暗一点。'}
+          </div>
+        </div>
+      );
+    }
+    const show = [];
+    // Previous line (fade out)
+    if (idx > 0 && lines[idx - 1]?.text) {
+      show.push({ key: 'prev', cls: 'prev', text: lines[idx - 1].text, time: lines[idx - 1].time });
+    }
+    // Current line (highlighted with scan progress)
+    if (idx >= 0 && lines[idx]?.text) {
+      show.push({ key: 'current', cls: 'current', text: lines[idx].text, time: lines[idx].time });
+    }
+    // Next line (preview)
+    if (idx + 1 < lines.length && lines[idx + 1]?.text) {
+      show.push({ key: 'next', cls: 'next', text: lines[idx + 1].text, time: lines[idx + 1].time });
+    }
+    if (!show.length) {
+      // Fallback: show first few lines
+      for (let i = 0; i < Math.min(3, lines.length); i++) {
+        if (lines[i]?.text) show.push({ key: 'l' + i, cls: i === 0 ? 'current' : 'next', text: lines[i].text, time: lines[i].time });
+      }
+    }
+    return (
+      <div className="lyric-karaoke" ref={lyricProgressRef}>
+        {show.map(l => {
+          const tText = trans[l.time];
+          return (
+            <div key={l.key} className={'lyric-line ' + l.cls}>
+              {l.text}
+              {tText && l.cls === 'current' && <div className="lyric-trans">{tText}</div>}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
   const stageRef = useRef(null);
   const [colorOpen, setColorOpen] = useState(false);
   const colorBtnRef = useRef(null);
@@ -2240,6 +2681,20 @@ const MusicStage = ({ state, dispatch, audioActions, viz, isDjTalking }) => {
   }, [colorOpen]);
 
   const acc = hexToRgb(state.stageAccent || STAGE_ACCENT_DEFAULT);
+
+  // Cover color extraction (when in cover mode)
+  const coverExtractRef = useRef(null);
+  useEffect(() => {
+    if (state.stageAccentMode !== 'cover') return;
+    const coverUrl = song.cover || song.cover_url || '';
+    if (!coverUrl || coverUrl === coverExtractRef.current) return;
+    coverExtractRef.current = coverUrl;
+    extractCoverColor(coverUrl).then(extracted => {
+      if (!extracted) return;
+      dispatch({ type: 'SET_STAGE_ACCENT', payload: extracted });
+      applyStageAccent(stageRef.current, extracted);
+    });
+  }, [song.cover, song.cover_url, state.stageAccentMode]);
 
   return (
     <section className="music-stage" ref={stageRef}>
@@ -2298,13 +2753,25 @@ const MusicStage = ({ state, dispatch, audioActions, viz, isDjTalking }) => {
                   ))}
                 </div>
                 <button onClick={() => { handleColorReset(); setColorOpen(false); }}
-                  className="mt-3 w-full text-[11px] py-1.5 rounded-full font-semibold transition-all"
+                  className="mt-2 w-full text-[11px] py-1.5 rounded-full font-semibold transition-all"
                   style={{
                     background: 'rgba(255,255,255,0.08)', color: 'rgba(248,255,249,0.72)',
                     border: '1px solid rgba(255,255,255,0.1)',
                   }}>
                   恢复默认
                 </button>
+                <div className="flex items-center justify-between mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                  <span className="text-[11px] font-semibold" style={{ color: 'rgba(248,255,249,0.62)' }}>跟随封面</span>
+                  <div
+                    className={'color-mode-toggle' + (state.stageAccentMode === 'cover' ? ' active' : '')}
+                    onClick={() => {
+                      const next = state.stageAccentMode === 'cover' ? 'manual' : 'cover';
+                      dispatch({ type: 'SET_STAGE_ACCENT_MODE', payload: next });
+                      saveStageAccentMode(next);
+                    }}
+                    title={state.stageAccentMode === 'cover' ? '关闭跟随封面' : '开启跟随封面自动取色'}
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -2316,7 +2783,7 @@ const MusicStage = ({ state, dispatch, audioActions, viz, isDjTalking }) => {
           <div className="stage-eyebrow">Now Broadcasting</div>
           <h1 className="track-title">{song.title || '等待一首歌'}</h1>
           <div className="track-artist">{song.artist || 'DJ 正在整理下一段情绪'}</div>
-          <div className="lyric-pill">{activeLyric}</div>
+          {renderKaraokeLyric()}
         </div>
         <RhythmDeck viz={viz} isPlaying={state.isPlaying} />
       </div>
@@ -2503,7 +2970,7 @@ const ScriptPaper = ({ state, dispatch, scriptFeed, recCards, onSendChat, onTogg
           </div>
           <div className="script-text">{primary}</div>
           {primaryReason && <div className="script-reason">{primaryReason}</div>}
-          {state.openingBlocked && (
+          {(state.openingBlocked || state.needsUserAction) && (
             <div style={{
               marginTop: 12, padding: '8px 14px',
               background: 'rgba(52, 211, 153, 0.12)',
@@ -2511,7 +2978,7 @@ const ScriptPaper = ({ state, dispatch, scriptFeed, recCards, onSendChat, onTogg
               borderRadius: 8, color: 'rgba(52, 211, 153, 0.85)',
               fontSize: 12, textAlign: 'center', cursor: 'pointer'
             }} onClick={() => { if (onResume) onResume(); }}>
-              点击播放按钮或此处开始收听
+              点击播放按钮或此处继续收听
             </div>
           )}
           {state.showReactions && (
@@ -2545,7 +3012,7 @@ const ScriptPaper = ({ state, dispatch, scriptFeed, recCards, onSendChat, onTogg
   );
 };
 
-const BroadcastShell = ({ state, dispatch, audioActions, viz, isDjTalking, onTransition, onReact, scriptFeed, recCards, onSendChat, onToggleVoiceMode, onPlayRec, onAddRec, onResumeOpening }) => {
+const BroadcastShell = ({ state, dispatch, audioActions, viz, isDjTalking, lyricProgressRef, onTransition, onReact, scriptFeed, recCards, onSendChat, onToggleVoiceMode, onPlayRec, onAddRec, onResumeOpening }) => {
   useEffect(() => {
     if (!state.transitionTriggered || state.currentMode !== 'dj') return;
     onTransition();
@@ -2555,7 +3022,7 @@ const BroadcastShell = ({ state, dispatch, audioActions, viz, isDjTalking, onTra
     <div className="broadcast-frame">
       <div className="broadcast-shell">
         <MusicStage state={state} dispatch={dispatch} audioActions={audioActions}
-          viz={viz} isDjTalking={isDjTalking} />
+          viz={viz} isDjTalking={isDjTalking} lyricProgressRef={lyricProgressRef} />
         <ScriptPaper state={state} dispatch={dispatch}
           scriptFeed={scriptFeed}
           recCards={recCards}
@@ -2813,6 +3280,7 @@ function App() {
   const transitionTimerRef = useRef(null);
   const executeActionsRef = useRef(null);
   const playDirectSongRef = useRef(null);
+  const resumeBlockedPlaybackRef = useRef(null);
   const chatVoiceRef = useRef({
     sessionId: 0,
     queue: [],
@@ -2950,6 +3418,14 @@ function App() {
       dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
       dispatch({ type: 'SET_PENDING_SONG', payload: null });
       dispatch({ type: 'SET_PENDING_NEXT', payload: false });
+      if (state.currentMode === 'dj') {
+        try { audioRef.current?.pause(); } catch (e) {}
+        dispatch({ type: 'CLEAR_SPEECH' });
+        dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
+        dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'transition_planning' });
+        dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: true });
+        return;
+      }
       audioActions.nextTrack();
     },
     prevTrack: () => {
@@ -2959,17 +3435,17 @@ function App() {
       dispatch({ type: 'SET_PENDING_NEXT', payload: false });
       audioActions.prevTrack();
     },
-    // Opening guard: when blocked with a pending song, play that song, not current_index
+    // Blocked playback guard: when there is a pending song, play that song, not current_index
     togglePlay: () => {
-      if (state.openingBlocked && state.pendingSong) {
-        handleResumeOpening();
+      if ((state.openingBlocked || state.needsUserAction) && state.pendingSong) {
+        resumeBlockedPlaybackRef.current?.();
         return;
       }
       audioActions.togglePlay();
     },
     play: () => {
-      if (state.openingBlocked && state.pendingSong) {
-        handleResumeOpening();
+      if ((state.openingBlocked || state.needsUserAction) && state.pendingSong) {
+        resumeBlockedPlaybackRef.current?.();
         return;
       }
       audioActions.play();
@@ -2978,7 +3454,7 @@ function App() {
     showSearch: () => setModal(m => ({ ...m, search: true })),
     showImport: () => setModal(m => ({ ...m, import: true })),
     closeAll: () => { setPlaylistOpen(false); setModal({ import: false, search: false, playlist: false, likes: false }); },
-  }), [audioActions, cancelTransitionFallback, state.openingBlocked, state.pendingSong, handleResumeOpening]);
+  }), [audioActions, cancelTransitionFallback, state.openingBlocked, state.needsUserAction, state.pendingSong, state.currentMode]);
 
   const loadMaterializedSong = useCallback((song, idx = -1) => {
     if (!song) return;
@@ -3004,9 +3480,26 @@ function App() {
   const loadPendingSong = useCallback(() => {
     cancelTransitionFallback();
     dispatch({ type: 'SET_OPENING_BLOCKED', payload: false });
+    dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: false });
+    dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'loading_pending_song' });
     const latest = stateRef.current;
     const song = latest.pendingSong;
     const songs = latest.playlist?.songs || [];
+    const restorePendingAfterBlocked = (pendingSong) => {
+      dispatch({ type: 'SET_PENDING_SONG', payload: pendingSong });
+      dispatch({ type: 'SET_OPENING_BLOCKED', payload: true });
+      dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: true });
+      dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'waiting_user_action' });
+    };
+    const verifyPendingPlay = (pendingSong, delay = 1200) => {
+      setTimeout(() => {
+        const audio = audioRef.current;
+        const latestState = stateRef.current;
+        if (!audio || !audio.paused) return;
+        if (latestState.isPlaying || latestState.playbackFlow === 'song_playing') return;
+        restorePendingAfterBlocked(pendingSong);
+      }, delay);
+    };
 
     if (song) {
       dispatch({ type: 'SET_PENDING_NEXT', payload: false });
@@ -3019,7 +3512,11 @@ function App() {
       if (idx < 0) idx = songs.findIndex(s => isSameTrack(s, song));
       if (idx >= 0) {
         audioActions.loadSong(idx);
-        setTimeout(() => audioActions.play(), 200);
+        setTimeout(async () => {
+          const res = await audioActions.play({ allowPending: true });
+          if (res?.status === 'blocked') restorePendingAfterBlocked(song);
+          else if (res?.status === 'waiting') verifyPendingPlay(song);
+        }, 200);
       } else if (song.netease_id) {
         const ns = normalizePlayableSong(song);
         const newSongs = [...songs, ns];
@@ -3028,10 +3525,15 @@ function App() {
         loadMaterializedSong(ns, idx);
         api('/api/playlist/add', 'POST', { song: ns }).catch(() => {});
         api('/api/playlist/current', 'POST', { index: idx }).catch(() => {});
-        setTimeout(() => audioActions.play(), 300);
+        setTimeout(async () => {
+          const res = await audioActions.play({ allowPending: true });
+          if (res?.status === 'blocked') restorePendingAfterBlocked(ns);
+          else if (res?.status === 'waiting') verifyPendingPlay(ns);
+        }, 300);
       } else {
         console.warn('[DJ] pending song is not playable, refusing to play a different track:', song);
         dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
+        dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'error_fallback' });
       }
       return;
     }
@@ -3053,9 +3555,13 @@ function App() {
     dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
     dispatch({ type: 'SET_PENDING_SONG', payload: null });
     dispatch({ type: 'CLEAR_SPEECH' });
+    dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'idle' });
   }, [audioActions, cancelTransitionFallback, loadMaterializedSong]);
 
   const handleTtsEnd = useCallback(() => {
+    const latest = stateRef.current;
+    const token = latest.activeCueToken || transitionTokenRef.current;
+    if (token && token !== transitionTokenRef.current) return;
     cancelTransitionFallback();
     dispatch({ type: 'SET_DJ_TALKING', payload: false });
     dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
@@ -3063,7 +3569,7 @@ function App() {
   }, [loadPendingSong, cancelTransitionFallback]);
 
   const tts = useTTS(state, dispatch, handleTtsEnd);
-  const { fetchLyrics } = useLyrics(state, dispatch);
+  const { fetchLyrics, progressRef } = useLyrics(state, dispatch, audioRef);
 
   useInterjections(state, dispatch, tts.speak);
   useStatsTicker(state.isPlaying, state.playlist);
@@ -3071,8 +3577,9 @@ function App() {
 
   useEffect(() => {
     if (state.appState !== 'idle' || state.isDjTalking) return;
+    if (state.openingBlocked || state.needsUserAction || state.playbackFlow === 'waiting_user_action') return;
     if (state.pendingSong) {
-      const id = setTimeout(() => loadPendingSong(), 80);
+      const id = setTimeout(() => loadPendingSong(), 160);
       return () => clearTimeout(id);
     }
     if (state.pendingNext) {
@@ -3137,10 +3644,13 @@ function App() {
 
   const runOpeningShow = useCallback(async (playlistData, startupIndex) => {
     dispatch({ type: 'SET_OPENING_BLOCKED', payload: true });
+    dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: false });
+    dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'opening_planning' });
     const songs = playlistData?.songs || [];
     const anchor = songs[startupIndex] || songs[0] || null;
     if (!anchor) {
       dispatch({ type: 'SET_OPENING_BLOCKED', payload: false });
+      dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'idle' });
       const say = '嘿，欢迎回来。先导入一点歌，我就能开始给你开台。';
       dispatch({ type: 'SET_APP_STATE', payload: 'speaking' });
       dispatch({ type: 'SET_SPEECH', payload: { text: say, segue: null, reason: '等待歌单后开始推荐', showReactions: false } });
@@ -3151,6 +3661,7 @@ function App() {
 
     cancelTransitionFallback();
     const openingToken = transitionTokenRef.current;
+    dispatch({ type: 'SET_ACTIVE_CUE_TOKEN', payload: openingToken });
     dispatch({ type: 'SET_CURRENT_SONG', payload: anchor });
     dispatch({ type: 'SET_CURRENT_INDEX', payload: startupIndex >= 0 ? startupIndex : 0 });
     dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
@@ -3185,6 +3696,7 @@ function App() {
       const reason = r?.reason || '开台推荐：先打招呼，再给你推一首不只来自喜欢列表的歌。';
       dispatch({ type: 'SET_PENDING_SONG', payload: selected });
       dispatch({ type: 'SET_APP_STATE', payload: 'speaking' });
+      dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'opening_speaking' });
       dispatch({ type: 'SET_MOOD', payload: r?.mood || 'chill' });
       dispatch({ type: 'SET_SPEECH', payload: { text: say, segue: r?.segue || null, reason, showReactions: true } });
       dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: say } });
@@ -3198,6 +3710,7 @@ function App() {
       setRecCards(prev => [...prev, openingCard].slice(-8));
       tts.speak(r?.say || say, r?.mood || 'chill');
       scheduleTransitionFallback(openingToken, (say.length || 16) * 350 + 9000, () => {
+        if (openingToken !== transitionTokenRef.current) return;
         if (!stateRef.current.pendingSong) return;
         dispatch({ type: 'SET_DJ_TALKING', payload: false });
         dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
@@ -3206,11 +3719,13 @@ function App() {
     } catch (e) {
       dispatch({ type: 'SET_PENDING_SONG', payload: fallbackSong });
       dispatch({ type: 'SET_APP_STATE', payload: 'speaking' });
+      dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'opening_speaking' });
       dispatch({ type: 'SET_MOOD', payload: 'chill' });
       dispatch({ type: 'SET_SPEECH', payload: { text: fallbackSay, segue: null, reason: '开台兜底推荐', showReactions: false } });
       dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'assistant', content: fallbackSay } });
       tts.speak(fallbackSay, 'chill');
       scheduleTransitionFallback(openingToken, (fallbackSay.length || 16) * 350 + 9000, () => {
+        if (openingToken !== transitionTokenRef.current) return;
         if (!stateRef.current.pendingSong) return;
         dispatch({ type: 'SET_DJ_TALKING', payload: false });
         dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
@@ -3288,12 +3803,23 @@ const doTransition = useCallback(async () => {
     }));
   const currentForTransition = state.currentSong || songs[safeCur] || {};
   const transitionToken = transitionTokenRef.current;
+  dispatch({ type: 'SET_ACTIVE_CUE_TOKEN', payload: transitionToken });
   dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
   dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
   dispatch({ type: 'SET_PENDING_NEXT', payload: false });
   dispatch({ type: 'SET_PENDING_SONG', payload: null });
   if (songs.length < 2 || state.currentMode === 'normal') { dispatch({ type: 'SET_APP_STATE', payload: 'idle' }); return; }
   dispatch({ type: 'SET_APP_STATE', payload: 'speaking' });
+  dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'transition_planning' });
+  const fallbackIdx = (safeCur + 1) % songs.length;
+  const fallbackSong = { ...(songs[fallbackIdx] || {}), playlist_index: fallbackIdx };
+  const fallbackSays = [
+    `这首歌的情绪刚刚好，我们顺着感觉接到 ${fallbackSong.artist || '下一位歌手'} 的《${fallbackSong.title || '下一首'}》。`,
+    `我先把节奏接稳，下面这首 ${fallbackSong.artist || '这位歌手'} 的《${fallbackSong.title || '歌'}》会更顺。`,
+    `换一点空气，给你接 ${fallbackSong.artist || '这位歌手'} 的《${fallbackSong.title || '这首歌'}》。`,
+    `我来切一首更贴合现在氛围的，${fallbackSong.artist || '这位歌手'} 的《${fallbackSong.title || '这首歌'}》。`
+  ];
+  const fallbackSay = fallbackSays[Math.floor(Math.random() * fallbackSays.length)];
   try {
     const chatCtx = (state.chatHistory || []).slice(-4).map(m => `${m.role === 'user' ? '用户' : 'DJ'}：${m.content}`).join('\n');
     const r = await api('/api/agent/transition', 'POST', {
@@ -3309,59 +3835,33 @@ const doTransition = useCallback(async () => {
       scene: 'transition',
     });
     if (stateRef.current.appState !== 'speaking') return;
-    if (r.say) {
-      const displayText = (r.say || '').replace(/\[em:[^\]]*\]/g, '');
-      dispatch({ type: 'SET_SPEECH', payload: { text: displayText, segue: r.segue, reason: r.reason, showReactions: true } });
-      if (r.mood) dispatch({ type: 'SET_MOOD', payload: r.mood });
-      dispatch({ type: 'ADD_TRANSITION', payload: displayText });
-      if (r.selected_song && r.action === 'play_selected') dispatch({ type: 'SET_PENDING_SONG', payload: r.selected_song });
-      tts.speak(r.say, r.mood);
-      const timeoutMs = (r.say?.length || 10) * 350 + 8000;
-      const fallbackIdx = (safeCur + 1) % songs.length;
-      scheduleTransitionFallback(transitionToken, timeoutMs, () => {
-        if (stateRef.current.pendingSong || stateRef.current.pendingNext || stateRef.current.pendingTransition) {
-          dispatch({ type: 'SET_DJ_TALKING', payload: false });
-          dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
-          loadPendingSong();
-          return;
-        }
-        dispatch({ type: 'SET_PENDING_SONG', payload: null });
-        dispatch({ type: 'SET_PENDING_NEXT', payload: false });
-        dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
-        dispatch({ type: 'SET_DJ_TALKING', payload: false });
-        dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
-        dispatch({ type: 'CLEAR_SPEECH' });
-        dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
-        if (audioActionsRef.current) {
-          audioActionsRef.current.loadSong(fallbackIdx);
-          setTimeout(() => audioActionsRef.current.play(), 200);
-        }
-      });
-    } else {
-      dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
-      dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
-      audioActions.nextTrack();
-    }
-  } catch (e) {
-    const ns = songs[(safeCur + 1) % songs.length] || {};
-    const fallbacks = [
-      '这首歌的情绪刚刚好，我们顺着感觉继续。',
-      '我先把节奏接稳，下一首会更顺。',
-      '如果你想换个味道，随时告诉我。',
-      '我来切一首更贴合现在氛围的。'
-    ];
-    const say = fallbacks[Math.floor(Math.random() * fallbacks.length)];
-    dispatch({ type: 'SET_SPEECH', payload: { text: say, segue: null, reason: '', showReactions: false } });
-    tts.speak(say, 'chill');
-    scheduleTransitionFallback(transitionToken, 6000, () => {
-      dispatch({ type: 'SET_PENDING_SONG', payload: null });
-      dispatch({ type: 'SET_PENDING_NEXT', payload: false });
-      dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
+    const selected = r?.selected_song && r.action === 'play_selected' ? r.selected_song : fallbackSong;
+    const rawSay = r?.say || fallbackSay;
+    const displayText = rawSay.replace(/\[em:[^\]]*\]/g, '');
+    dispatch({ type: 'SET_PENDING_SONG', payload: selected });
+    dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'transition_speaking' });
+    dispatch({ type: 'SET_SPEECH', payload: { text: displayText, segue: r?.segue || null, reason: r?.reason || 'DJ 模式兜底串词', showReactions: true } });
+    if (r?.mood) dispatch({ type: 'SET_MOOD', payload: r.mood });
+    dispatch({ type: 'ADD_TRANSITION', payload: displayText });
+    tts.speak(rawSay, r?.mood || 'chill');
+    const timeoutMs = (rawSay?.length || 10) * 350 + 8000;
+    scheduleTransitionFallback(transitionToken, timeoutMs, () => {
+      if (transitionToken !== transitionTokenRef.current) return;
+      if (!stateRef.current.pendingSong) dispatch({ type: 'SET_PENDING_SONG', payload: selected });
       dispatch({ type: 'SET_DJ_TALKING', payload: false });
       dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
-      dispatch({ type: 'CLEAR_SPEECH' });
-      dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
-      audioActions.nextTrack();
+      loadPendingSong();
+    });
+  } catch (e) {
+    dispatch({ type: 'SET_PENDING_SONG', payload: fallbackSong });
+    dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'transition_speaking' });
+    dispatch({ type: 'SET_SPEECH', payload: { text: fallbackSay, segue: null, reason: 'transition API 失败，使用本地兜底串词', showReactions: false } });
+    tts.speak(fallbackSay, 'chill');
+    scheduleTransitionFallback(transitionToken, (fallbackSay.length || 10) * 350 + 6000, () => {
+      if (transitionToken !== transitionTokenRef.current) return;
+      dispatch({ type: 'SET_DJ_TALKING', payload: false });
+      dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
+      loadPendingSong();
     });
   }
 }, [state.playlist, state.currentSong, state.currentMode, state.chatHistory, state.recentTransitions, state.userActivity, state.weather, state.appState, state.isDjTalking, tts, audioActions, cancelTransitionFallback, scheduleTransitionFallback, loadPendingSong]);
@@ -3472,10 +3972,19 @@ const executeActions = useCallback(async (actions) => {
         tts.stop();
         dispatch({ type: 'CLEAR_SPEECH' });
         dispatch({ type: 'SET_APP_STATE', payload: 'idle' });
+        dispatch({ type: 'SET_OPENING_BLOCKED', payload: false });
+        dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: false });
+        dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'idle' });
         dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
         dispatch({ type: 'SET_PENDING_SONG', payload: null });
         dispatch({ type: 'SET_PENDING_NEXT', payload: false });
-        audioActions.nextTrack();
+        if (state.currentMode === 'dj') {
+          try { audioRef.current?.pause(); } catch (e) {}
+          dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'transition_planning' });
+          dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: true });
+        } else {
+          audioActions.nextTrack();
+        }
         break;
       case 'search':
         setSearchInitKw(act.arg || '');
@@ -3497,6 +4006,9 @@ const executeActions = useCallback(async (actions) => {
         if (bestIdx >= 0 && bestScore > 0) {
           const s = state.playlist.songs[bestIdx];
           cancelTransitionFallback();
+          dispatch({ type: 'SET_OPENING_BLOCKED', payload: false });
+          dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: false });
+          dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'song_playing' });
           audioActions.loadSong(bestIdx);
           audioActions.play();
           selectedSong = { title: s.title || '', artist: s.artist || '' };
@@ -3570,6 +4082,9 @@ executeActionsRef.current = executeActions;
   // Direct play
   const playDirectSong = useCallback((song) => {
     cancelTransitionFallback();
+    dispatch({ type: 'SET_OPENING_BLOCKED', payload: false });
+    dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: false });
+    dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'song_playing' });
     dispatch({ type: 'SET_PENDING_SONG', payload: null });
     dispatch({ type: 'SET_PENDING_NEXT', payload: false });
     dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
@@ -3612,18 +4127,30 @@ executeActionsRef.current = executeActions;
       dispatch({ type: 'SET_PENDING_NEXT', payload: false });
     }
   }, [state.playlist.current_index, tts, cancelTransitionFallback, stopChatVoice]);
-  // Resume opening (click-to-start after autoplay block)
-  const handleResumeOpening = useCallback(() => {
+  // Resume blocked playback (click-to-start after autoplay block)
+  const resumeBlockedPlayback = useCallback(async () => {
     dispatch({ type: 'SET_OPENING_BLOCKED', payload: false });
-    if (state.pendingSong) {
-      setTimeout(() => loadPendingSong(), 200);
+    dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: false });
+    if (stateRef.current.pendingSong) {
+      setTimeout(() => loadPendingSong(), 80);
+      return;
     }
-  }, [state.pendingSong, loadPendingSong]);
+    const res = await audioActions.retryPlayFromUserGesture();
+    if (res?.status === 'blocked') {
+      dispatch({ type: 'SET_OPENING_BLOCKED', payload: true });
+      dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: true });
+      dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'waiting_user_action' });
+    }
+  }, [audioActions, loadPendingSong]);
+  resumeBlockedPlaybackRef.current = resumeBlockedPlayback;
   // Mode toggle
   const toggleMode = useCallback(async () => {
     cancelTransitionFallback();
     stopChatVoice();
     tts.stop();
+    dispatch({ type: 'SET_OPENING_BLOCKED', payload: false });
+    dispatch({ type: 'SET_NEEDS_USER_ACTION', payload: false });
+    dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'idle' });
     dispatch({ type: 'SET_PENDING_TRANSITION', payload: false });
     dispatch({ type: 'SET_PENDING_SONG', payload: null });
     dispatch({ type: 'SET_PENDING_NEXT', payload: false });
@@ -3711,6 +4238,7 @@ executeActionsRef.current = executeActions;
           audioActions={uiAudioActions}
           viz={viz}
           isDjTalking={state.isDjTalking}
+          lyricProgressRef={progressRef}
           onTransition={doTransition}
           onReact={handleReaction}
           scriptFeed={djScriptFeed}
@@ -3719,7 +4247,7 @@ executeActionsRef.current = executeActions;
           onToggleVoiceMode={toggleVoiceMode}
           onPlayRec={playRecommendation}
           onAddRec={addRecommendation}
-          onResumeOpening={handleResumeOpening} />
+          onResumeOpening={resumeBlockedPlayback} />
       </div>
       {/* Playlist Slide */}
       <PlaylistSlide open={playlistOpen} songs={state.playlist.songs} currentIndex={state.playlist.current_index}
