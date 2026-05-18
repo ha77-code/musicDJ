@@ -4,11 +4,12 @@ state.db feedback into composite weights + tags for song selection."""
 import json
 import math
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
-DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-PROCESSED_DIR = DATA_DIR / "listening_history" / "processed"
-STATS_PATH = DATA_DIR / "listening_stats.json"
+from .paths import data_dir, processed_history_dir, stats_path
+
+DATA_DIR = data_dir()
+PROCESSED_DIR = processed_history_dir()
+STATS_PATH = stats_path()
 
 
 class RuntimeTasteScorer:

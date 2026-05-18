@@ -883,10 +883,10 @@
   .script-title {
     margin-top: 3px;
     color: #0c120f;
-    font-size: clamp(20px, 2.6vw, 30px);
-    line-height: 0.96;
+    font-size: clamp(18px, 2vw, 24px);
+    line-height: 1.08;
     font-weight: 900;
-    letter-spacing: -0.06em;
+    letter-spacing: 0;
   }
 
   .script-badge {
@@ -912,7 +912,7 @@
   .script-current {
     padding: 18px;
     border-radius: 24px;
-    background: rgba(255, 255, 255, 0.62);
+    background: rgba(255, 255, 255, 0.82);
     border: 1px solid rgba(15, 23, 42, 0.06);
     box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
   }
@@ -983,39 +983,42 @@
   .recommend-strip {
     position: relative;
     z-index: 2;
-    margin-bottom: 12px;
+    margin: 2px 0 16px;
     display: flex;
     gap: 10px;
     overflow-x: auto;
-    padding-bottom: 4px;
+    padding: 11px;
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.74);
+    border: 1px solid rgba(15, 23, 42, 0.06);
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
   }
 
   .paper-rec-card {
-    min-width: 236px;
-    max-width: 280px;
+    min-width: min(330px, 82vw);
+    max-width: 380px;
     display: grid;
-    grid-template-columns: 42px minmax(0, 1fr) auto;
+    grid-template-columns: 52px minmax(0, 1fr) auto;
     align-items: center;
-    gap: 10px;
-    padding: 10px;
-    border-radius: 18px;
-    background: rgba(7, 9, 8, 0.88);
-    color: #f8fff9;
-    border: 1px solid rgba(52, 211, 153, 0.22);
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 16px;
+    background: rgba(248, 252, 249, 0.96);
+    color: #111814;
+    border: 1px solid rgba(15, 23, 42, 0.06);
   }
 
   .paper-rec-cover {
-    width: 42px;
-    height: 42px;
+    width: 52px;
+    height: 52px;
     border-radius: 12px;
     object-fit: cover;
-    background: linear-gradient(145deg, #111, #34d399);
+    background: linear-gradient(145deg, #dce7e1, #34d399);
   }
 
   .paper-rec-title {
-    color: #f8fff9;
-    font-size: 12px;
+    color: #14201a;
+    font-size: 13px;
     font-weight: 800;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1023,9 +1026,9 @@
   }
 
   .paper-rec-artist {
-    color: rgba(236, 253, 245, 0.62);
+    color: rgba(17, 24, 20, 0.58);
     font-size: 11px;
-    margin-top: 2px;
+    margin-top: 4px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1034,18 +1037,28 @@
   .paper-rec-actions {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
   }
 
   .paper-rec-actions button {
-    width: 28px;
-    height: 28px;
+    width: 34px;
+    height: 34px;
     border: 0;
     border-radius: 999px;
     color: #06130d;
-    background: #f8fff9;
+    background: #eef5f1;
     cursor: pointer;
     font-weight: 900;
+  }
+
+  .paper-rec-actions button:first-child {
+    color: #f8fff9;
+    background: #0d1812;
+  }
+
+  .paper-rec-actions button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
   }
 
   .compact-command {
@@ -1521,10 +1534,78 @@ function detectSpeechLang(text) {
   const kana = /[\u3040-\u30ff]/.test(value);
   const cjkCount = (value.match(/[\u4e00-\u9fff]/g) || []).length;
   const latinCount = (value.match(/[A-Za-z]/g) || []).length;
-  if (hangul && cjkCount < 6) return 'ko-KR';
+  if (hangul && cjkCount < 3) return 'ko-KR';
   if (kana && cjkCount < 8) return 'ja-JP';
   if (latinCount > 8 && latinCount > cjkCount * 1.4) return 'en-US';
   return 'zh-CN';
+}
+
+function splitSpeechSegments(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return [];
+  const parts = raw.split(/([\uac00-\ud7af][\uac00-\ud7af\s'-]*|[\u3040-\u30ff][\u3040-\u30ff\s'-]*)/g)
+    .map(s => s.trim())
+    .filter(Boolean);
+  return parts.length ? parts : [raw];
+}
+
+function speechLangForSegment(segment, wholeText) {
+  if (/[\uac00-\ud7af]/.test(segment)) return 'ko-KR';
+  if (/[\u3040-\u30ff]/.test(segment)) return 'ja-JP';
+  return detectSpeechLang(wholeText || segment);
+}
+
+function pickSpeechVoice(voices, lang, fallbackVoice) {
+  const exact = voices.find(v => v.lang.toLowerCase() === lang.toLowerCase());
+  if (exact) return exact;
+  const prefix = lang.split('-')[0].toLowerCase();
+  return voices.find(v => v.lang.toLowerCase().startsWith(prefix))
+    || fallbackVoice
+    || voices.find(v => v.lang.startsWith('zh') || v.lang.startsWith('en'))
+    || null;
+}
+
+function songKey(song) {
+  if (!song) return '';
+  return song.netease_id ? `netease:${song.netease_id}` : (song.path ? `local:${song.path}` : `${song.artist || ''}::${song.title || ''}`);
+}
+
+function chooseRadioFallbackSong(songs, currentIndex, currentSong, opts = {}) {
+  if (!Array.isArray(songs) || !songs.length) return null;
+  if (songs.length === 1) return { ...songs[0], playlist_index: 0 };
+  const currentKey = songKey(currentSong);
+  let cur = Number.isInteger(currentIndex) ? currentIndex : -1;
+  if (cur < 0 || cur >= songs.length) {
+    cur = songs.findIndex(s => songKey(s) && songKey(s) === currentKey);
+  }
+  const sequential = cur >= 0 ? (cur + 1) % songs.length : -1;
+  let candidates = songs.map((song, index) => ({ song, index }))
+    .filter(({ song, index }) => index !== cur && (!currentKey || songKey(song) !== currentKey));
+  if (candidates.length > 2 && sequential >= 0) {
+    candidates = candidates.filter(({ index }) => index !== sequential);
+  }
+  if (!candidates.length) {
+    candidates = songs.map((song, index) => ({ song, index })).filter(({ index }) => index !== cur);
+  }
+  const weights = candidates.map(({ song, index }) => {
+    let w = 1;
+    const playCount = Number(song.play_count || song.count || 0);
+    if (!playCount) w += opts.opening ? 2.5 : 1.4;
+    else w += Math.max(0.2, 1.2 / Math.sqrt(playCount + 1));
+    if (song.source === 'netease_discovery') w += 2.4;
+    if (song.source === 'netease') w += 0.4;
+    if (index === sequential) w *= 0.2;
+    if (cur >= 0 && Math.abs(index - cur) === 1) w *= 0.65;
+    return Math.max(0.05, w);
+  });
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < candidates.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return { ...candidates[i].song, playlist_index: candidates[i].index };
+  }
+  const last = candidates[candidates.length - 1];
+  return { ...last.song, playlist_index: last.index };
 }
 
 /* ── Stage accent helpers ── */
@@ -2256,27 +2337,41 @@ function useTTS(state, dispatch, onEnd) {
   }, []);
 
   const _fallback = useCallback((text, mood) => {
-    if (!('speechSynthesis' in window)) return;
+    if (!('speechSynthesis' in window)) {
+      dispatch({ type: 'SET_DJ_TALKING', payload: false });
+      if (onEndRef.current) onEndRef.current();
+      return;
+    }
     window.speechSynthesis.cancel();
     if (!text) { dispatch({ type: 'SET_DJ_TALKING', payload: false }); if (onEndRef.current) onEndRef.current(); return; }
     // Strip [em:word] SSML markers — these are for Volcano TTS only
     const cleanText = text.replace(/\[em:[^\]]*\]/g, '').replace(/\s+/g, ' ').trim();
     if (!cleanText) { dispatch({ type: 'SET_DJ_TALKING', payload: false }); if (onEndRef.current) onEndRef.current(); return; }
-    const u = new SpeechSynthesisUtterance(cleanText);
-    const lang = detectSpeechLang(cleanText);
-    u.lang = lang; u.volume = 0.85;
     const presets = { energetic: { rate: 1.08, pitch: 1.15 }, chill: { rate: 0.9, pitch: 0.95 }, melancholy: { rate: 0.85, pitch: 0.85 }, playful: { rate: 1.05, pitch: 1.1 }, nostalgic: { rate: 0.88, pitch: 0.9 }, default: { rate: 0.95, pitch: 1.0 } };
     const p = presets[mood] || presets['default'];
-    u.rate = p.rate; u.pitch = p.pitch;
     const voices = speechSynthesis.getVoices();
-    const langPrefix = lang.split('-')[0].toLowerCase();
-    const matchedVoice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix))
-      || fallbackVoice.current
-      || voices.find(v => v.lang.startsWith('zh') || v.lang.startsWith('en'))
-      || null;
-    if (matchedVoice) u.voice = matchedVoice;
-    u.onend = () => { dispatch({ type: 'SET_DJ_TALKING', payload: false }); if (onEndRef.current) onEndRef.current(); };
-    window.speechSynthesis.speak(u);
+    const segments = splitSpeechSegments(cleanText);
+    let i = 0;
+    const finish = () => {
+      dispatch({ type: 'SET_DJ_TALKING', payload: false });
+      if (onEndRef.current) onEndRef.current();
+    };
+    const speakNext = () => {
+      if (i >= segments.length) { finish(); return; }
+      const segment = segments[i++];
+      const u = new SpeechSynthesisUtterance(segment);
+      const lang = speechLangForSegment(segment, cleanText);
+      u.lang = lang;
+      u.volume = 0.85;
+      u.rate = p.rate;
+      u.pitch = p.pitch;
+      const matchedVoice = pickSpeechVoice(voices, lang, fallbackVoice.current);
+      if (matchedVoice) u.voice = matchedVoice;
+      u.onend = speakNext;
+      u.onerror = speakNext;
+      window.speechSynthesis.speak(u);
+    };
+    speakNext();
   }, []);
 
   const speakStream = useCallback((text, mood) => {
@@ -2288,10 +2383,17 @@ function useTTS(state, dispatch, onEnd) {
         if (!resp.ok) { _fallback(text, mood); return; }
         const reader = resp.body.getReader();
         const decoder = new TextDecoder(); let buffer = '';
+        let gotAudio = false;
+        let usedFallback = false;
+        const fallbackOnce = () => {
+          if (gotAudio || usedFallback || abortRef.current) return;
+          usedFallback = true;
+          _fallback(text, mood);
+        };
         function readLoop() {
           if (abortRef.current) { reader.cancel(); return; }
           reader.read().then(({ value, done }) => {
-            if (done) return;
+            if (done) { fallbackOnce(); return; }
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n'); buffer = lines.pop() || '';
             for (const line of lines) {
@@ -2303,10 +2405,12 @@ function useTTS(state, dispatch, onEnd) {
                   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
                   const blob = new Blob([bytes], { type: 'audio/mpeg' });
                   queueRef.current.push(URL.createObjectURL(blob));
+                  gotAudio = true;
                   if (queueRef.current.length === 1) _playChunk();
                 } catch (e) {}
               } else if (line.startsWith('event: done')) {
                 doneRef.current = true;
+                fallbackOnce();
               }
             }
             readLoop();
@@ -3635,11 +3739,8 @@ function App() {
     const songs = playlistData?.songs || [];
     if (!songs.length) return -1;
     const savedIndex = Number(playlistData.current_index);
-    if (Number.isInteger(savedIndex) && savedIndex > 0 && savedIndex < songs.length) return savedIndex;
-    if (songs.length === 1) return 0;
-    let idx = Math.floor(Math.random() * songs.length);
-    if (idx === 0) idx = 1 + Math.floor(Math.random() * (songs.length - 1));
-    return idx;
+    if (Number.isInteger(savedIndex) && savedIndex >= 0 && savedIndex < songs.length) return savedIndex;
+    return 0;
   }, []);
 
   const runOpeningShow = useCallback(async (playlistData, startupIndex) => {
@@ -3668,8 +3769,9 @@ function App() {
     dispatch({ type: 'SET_PENDING_NEXT', payload: false });
     dispatch({ type: 'SET_TRANSITION_TRIGGERED', payload: false });
 
-    const fallbackSong = { ...anchor, playlist_index: startupIndex >= 0 ? startupIndex : 0 };
-    const fallbackSay = `嘿，欢迎回来。我先从 ${anchor.artist || '这位歌手'} 的《${anchor.title || '这首歌'}》开场，然后慢慢往外探一点新东西。`;
+    const fallbackSong = chooseRadioFallbackSong(songs, startupIndex, anchor, { opening: true })
+      || { ...anchor, playlist_index: startupIndex >= 0 ? startupIndex : 0 };
+    const fallbackSay = `嘿，欢迎回来。我先从 ${fallbackSong.artist || '这位歌手'} 的《${fallbackSong.title || '这首歌'}》开场，然后慢慢往外探一点新东西。`;
     try {
       const chatContext = [
         '开台：用户刚打开私人电台。',
@@ -3812,7 +3914,8 @@ const doTransition = useCallback(async () => {
   dispatch({ type: 'SET_APP_STATE', payload: 'speaking' });
   dispatch({ type: 'SET_PLAYBACK_FLOW', payload: 'transition_planning' });
   const fallbackIdx = (safeCur + 1) % songs.length;
-  const fallbackSong = { ...(songs[fallbackIdx] || {}), playlist_index: fallbackIdx };
+  const fallbackSong = chooseRadioFallbackSong(songs, safeCur, currentForTransition, { opening: false })
+    || { ...(songs[fallbackIdx] || {}), playlist_index: fallbackIdx };
   const fallbackSays = [
     `这首歌的情绪刚刚好，我们顺着感觉接到 ${fallbackSong.artist || '下一位歌手'} 的《${fallbackSong.title || '下一首'}》。`,
     `我先把节奏接稳，下面这首 ${fallbackSong.artist || '这位歌手'} 的《${fallbackSong.title || '歌'}》会更顺。`,

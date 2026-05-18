@@ -8,6 +8,7 @@ import random
 import time
 import base64
 import hashlib
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -15,6 +16,7 @@ import requests
 from flask import Flask, jsonify, request, send_from_directory, send_file, Response, redirect
 
 from agent.dj_brain import DJBrain
+from agent import paths
 from agent.realtime_voice import RealtimeVoiceClient
 from agent.scheduler import DJScheduler
 from agent.tts_provider import TTSProvider
@@ -87,15 +89,29 @@ def _clean_action_tags(text: str) -> str:
 
 
 # ── Paths ──────────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-CONFIG_PATH = BASE_DIR / "config.json"
-PLAYLIST_PATH = DATA_DIR / "playlist.json"
-PERSONALITY_PATH = DATA_DIR / "personality.json"
-VOICE_MEMOS_DIR = DATA_DIR / "voice_memos"
-FRONTEND_DIR = BASE_DIR / "frontend"
-STATS_PATH = DATA_DIR / "listening_stats.json"
-LIKES_PATH = DATA_DIR / "user_likes.json"
+paths.ensure_runtime_layout()
+
+BASE_DIR = paths.resource_root()
+DATA_DIR = paths.data_dir()
+CONFIG_PATH = paths.config_path()
+PLAYLIST_PATH = paths.playlist_path()
+PERSONALITY_PATH = paths.personality_path()
+VOICE_MEMOS_DIR = paths.voice_memos_dir()
+FRONTEND_DIR = paths.frontend_dir()
+STATS_PATH = paths.stats_path()
+LIKES_PATH = paths.likes_path()
+LOGS_DIR = paths.logs_dir()
+
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+logging.basicConfig(
+    level=logging.DEBUG if os.environ.get("MUSICDJ_DEBUG") else logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    handlers=[
+        logging.FileHandler(LOGS_DIR / "backend.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
+logger = logging.getLogger("musicdj.backend")
 
 # ── App ────────────────────────────────────────────────
 app = Flask(__name__, static_folder=str(FRONTEND_DIR), static_url_path="")
@@ -118,13 +134,20 @@ def save_json(path, data):
 
 
 def get_config():
-    return load_json(CONFIG_PATH, {})
+    config = load_json(CONFIG_PATH, {})
+    override_host = os.environ.get("MUSICDJ_NETEASE_API_HOST", "").strip()
+    if override_host:
+        config.setdefault("netease", {})["api_host"] = override_host
+    override_port = os.environ.get("MUSICDJ_PORT", "").strip()
+    if override_port.isdigit():
+        config.setdefault("app", {})["port"] = int(override_port)
+    return config
 
 
 # ── NCM Decryption ────────────────────────────────────
 NCM_MAGIC = b"CTENFDAM"
 NCM_AES_KEY = bytes.fromhex("687a4852416d736f356b496e62617857")  # hzHRAmso5kInbaxW
-NCM_CACHE_DIR = BASE_DIR / "data" / ".ncm_cache"
+NCM_CACHE_DIR = paths.ncm_cache_dir()
 
 
 def _build_key_box(key_data):
@@ -435,6 +458,106 @@ def get_song_key(song):
     return f"{source}_{sid}"
 
 
+def _find_song_index(songs, current_song, saved_index=-1):
+    """Find current song in the playlist without trusting stale indexes blindly."""
+    if isinstance(saved_index, int) and 0 <= saved_index < len(songs):
+        saved = songs[saved_index]
+        if get_song_key(saved) == get_song_key(current_song):
+            return saved_index
+
+    cur_key = get_song_key(current_song)
+    for i, song in enumerate(songs):
+        if cur_key and get_song_key(song) == cur_key:
+            return i
+
+    cur_title = (current_song.get("title") or "").strip().lower()
+    cur_artist = (current_song.get("artist") or "").strip().lower()
+    if cur_title and cur_artist:
+        for i, song in enumerate(songs):
+            if ((song.get("title") or "").strip().lower() == cur_title and
+                    (song.get("artist") or "").strip().lower() == cur_artist):
+                return i
+    return saved_index if isinstance(saved_index, int) else -1
+
+
+def choose_radio_fallback_song(playlist, current_song, playlist_data=None, opening=False):
+    """Pick a non-mechanical fallback song for DJ mode.
+
+    This is used only when AI/discovery cannot produce a selection. It avoids
+    immediately falling back to the next playlist item, while still preferring
+    underplayed songs so the set feels curated instead of purely random.
+    """
+    if not playlist:
+        return None
+    if len(playlist) == 1:
+        selected = dict(playlist[0])
+        selected["playlist_index"] = 0
+        return selected
+
+    playlist_data = playlist_data or {}
+    cur_idx = _find_song_index(
+        playlist,
+        current_song or {},
+        playlist_data.get("current_index", -1),
+    )
+    sequential_idx = (cur_idx + 1) % len(playlist) if cur_idx >= 0 else -1
+    cur_key = get_song_key(current_song or {})
+
+    indexed = []
+    for i, song in enumerate(playlist):
+        if i == cur_idx:
+            continue
+        if cur_key and get_song_key(song) == cur_key:
+            continue
+        indexed.append((i, song))
+
+    if len(indexed) > 2 and sequential_idx >= 0:
+        indexed = [(i, s) for i, s in indexed if i != sequential_idx]
+    if not indexed:
+        indexed = [(i, s) for i, s in enumerate(playlist) if i != cur_idx]
+    if not indexed:
+        return None
+
+    stats = load_stats()
+    song_plays = stats.get("song_plays", {})
+    now = datetime.now()
+    weights = []
+    for i, song in indexed:
+        play_data = song_plays.get(get_song_key(song), {})
+        count = int(play_data.get("count", 0) or 0)
+        last_played = play_data.get("last_played")
+        weight = 1.0
+        weight += 2.2 if (opening and count == 0) else 0.0
+        weight += 1.2 / ((count + 1) ** 0.5)
+        if last_played:
+            try:
+                age_days = max(0, (now - datetime.fromisoformat(last_played)).days)
+                weight += min(1.8, age_days / 7)
+            except Exception:
+                pass
+        else:
+            weight += 0.8
+        if i == sequential_idx:
+            weight *= 0.2
+        if cur_idx >= 0 and abs(i - cur_idx) == 1:
+            weight *= 0.7
+        weights.append(max(0.05, weight))
+
+    total = sum(weights)
+    r = random.random() * total
+    for (i, song), weight in zip(indexed, weights):
+        r -= weight
+        if r <= 0:
+            selected = dict(song)
+            selected["playlist_index"] = i
+            return selected
+
+    i, song = indexed[-1]
+    selected = dict(song)
+    selected["playlist_index"] = i
+    return selected
+
+
 def get_fallback_transition(weather_desc, tags):
     """Get a fallback transition based on weather and emoji tags."""
     personality = load_json(PERSONALITY_PATH, {})
@@ -478,13 +601,28 @@ def serve_static(filename):
 @app.route("/api/status")
 def api_status():
     config = get_config()
-    return jsonify({
+    status = {
         "running": True,
+        "version": config.get("app", {}).get("version", "0.1.0"),
         "dj_name": config.get("dj", {}).get("name", "clauseekio"),
         "llm_available": dj_brain.llm.check_available() if dj_brain else False,
         "netease_available": check_netease_api(),
         "playlist_count": len(load_json(PLAYLIST_PATH, {}).get("songs", [])),
         "current_song": load_json(PLAYLIST_PATH, {}).get("current_index", -1),
+    }
+    if os.environ.get("MUSICDJ_DEBUG"):
+        status.update({
+            "packaged_mode": paths.packaged_mode(),
+            "app_data_dir": str(paths.app_data_root()),
+            "resource_dir": str(paths.resource_root()),
+            "data_dir": str(DATA_DIR),
+            "frontend_dir": str(FRONTEND_DIR),
+            "logs_dir": str(LOGS_DIR),
+            "config_path": str(CONFIG_PATH),
+            "netease_api_host": config.get("netease", {}).get("api_host", ""),
+        })
+    return jsonify({
+        **status,
     })
 
 
@@ -1014,18 +1152,12 @@ def api_agent_transition():
 
     server_selected_fallback = False
     if not selected_song and playlist:
-        cur_id = str(current_song.get("netease_id") or current_song.get("path") or "")
-        cur_idx = -1
-        for i, song in enumerate(playlist):
-            sid = str(song.get("netease_id") or song.get("path") or "")
-            if sid and sid == cur_id:
-                cur_idx = i
-                break
-        if cur_idx < 0:
-            cur_idx = playlist_data.get("current_index", -1)
-        next_idx = ((cur_idx if isinstance(cur_idx, int) and cur_idx >= 0 else -1) + 1) % len(playlist)
-        selected_song = dict(playlist[next_idx])
-        selected_song["playlist_index"] = next_idx
+        selected_song = choose_radio_fallback_song(
+            playlist,
+            current_song,
+            playlist_data=playlist_data,
+            opening=(scene == "opening"),
+        )
         server_selected_fallback = True
 
     if action is None:
@@ -1039,6 +1171,15 @@ def api_agent_transition():
         action.reason = action.reason or "DJ transition fallback"
         action.mood = action.mood or "chill"
         action.action = "play_selected"
+        if server_selected_fallback:
+            title = selected_song.get("title") or "这首歌"
+            artist = selected_song.get("artist") or "这位歌手"
+            if scene == "opening":
+                action.say = f"欢迎回来。我先不按歌单顺序走，给你挑 {artist} 的《{title}》开场，看看今天的第一口空气对不对。"
+                action.reason = "DJ opening fallback: weighted radio pick"
+            else:
+                action.say = f"这一首我不顺着歌单往下排，给你拐到 {artist} 的《{title}》。这个转向会更像现在该发生的事。"
+                action.reason = "DJ transition fallback: weighted radio pick"
     elif selected_song and getattr(action, "action", "") != "play_selected":
         action.action = "play_selected"
 
@@ -1714,7 +1855,7 @@ def api_stats_song_play():
 # ── Main ───────────────────────────────────────────────
 if __name__ == "__main__":
     config = get_config()
-    port = config.get("app", {}).get("port", 8765)
+    port = int(os.environ.get("MUSICDJ_PORT") or config.get("app", {}).get("port", 8765))
 
     # Initialize DJ Agent Brain
     dj_brain = DJBrain(config)
@@ -1728,6 +1869,8 @@ if __name__ == "__main__":
     scheduler = DJScheduler(dj_brain, config)
     scheduler.start()
 
+    logger.info("Music DJ runtime paths: app_data=%s resource=%s frontend=%s",
+                paths.app_data_root(), paths.resource_root(), FRONTEND_DIR)
     print(f"""
 ==========================================
          Music DJ Server Started
@@ -1738,6 +1881,8 @@ if __name__ == "__main__":
   Netease: {'Connected' if check_netease_api() else 'Not connected'}
   Agent:  Ready (memory: {dj_brain.memory.get_transition_count()} transitions)
   Scheduler: {'Running' if scheduler.enabled else 'Disabled'}
+  Data:    {paths.app_data_root()}
+  Logs:    {LOGS_DIR}
 ==========================================
 """)
     app.run(host="127.0.0.1", port=port, debug=False)

@@ -4,15 +4,20 @@ const path = require('path')
 const tmpPath = require('os').tmpdir()
 
 async function start() {
-  // 检测是否存在 anonymous_token 文件,没有则生成
-  if (!fs.existsSync(path.resolve(tmpPath, 'anonymous_token'))) {
-    fs.writeFileSync(path.resolve(tmpPath, 'anonymous_token'), '', 'utf-8')
+  const anonymousTokenPath = path.resolve(tmpPath, 'anonymous_token')
+  if (!fs.existsSync(anonymousTokenPath)) {
+    fs.writeFileSync(anonymousTokenPath, '', 'utf-8')
   }
-  // 启动时更新anonymous_token
-  const generateConfig = require('./generateConfig')
-  await generateConfig()
+
+  if (process.env.NCM_API_SKIP_ANONYMOUS_TOKEN !== 'true') {
+    // Desktop packaging can skip this so the local API listens even when offline.
+    const generateConfig = require('./generateConfig')
+    await generateConfig()
+  }
+
   require('./server').serveNcmApi({
-    checkVersion: true,
+    checkVersion: process.env.NCM_API_CHECK_VERSION !== 'false',
   })
 }
+
 start()

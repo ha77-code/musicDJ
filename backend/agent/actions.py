@@ -106,7 +106,7 @@ class ActionParser:
         """Rule-based fallback when LLM fails. Uses song-specific templates."""
         import random, json
         from datetime import datetime
-        from pathlib import Path
+        from .paths import personality_path
 
         artist = next_song.get("artist", "") or ""
         title = next_song.get("title", "") or ""
@@ -117,8 +117,7 @@ class ActionParser:
         candidates = []
         if fallback_library is None:
             try:
-                lib_path = Path(__file__).resolve().parent.parent.parent / "data" / "personality.json"
-                fallback_library = json.loads(lib_path.read_text(encoding="utf-8")).get("fallback_transitions", {})
+                fallback_library = json.loads(personality_path().read_text(encoding="utf-8")).get("fallback_transitions", {})
             except Exception:
                 fallback_library = {}
 

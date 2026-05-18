@@ -107,26 +107,36 @@ class TTSProvider:
             elapsed_ms = int((time.perf_counter() - t0) * 1000)
         except Exception as e:
             print(f"[TTS] Request failed: {e}")
+            if use_ssml:
+                return self.synthesize(text, mood, force_plain=True)
             return None
 
         if resp.status_code != 200:
             print(f"[TTS] HTTP {resp.status_code}: {resp.text[:200]}")
+            if use_ssml:
+                return self.synthesize(text, mood, force_plain=True)
             return None
 
         try:
             result = resp.json()
         except Exception:
             print(f"[TTS] Invalid JSON response: {resp.text[:200]}")
+            if use_ssml:
+                return self.synthesize(text, mood, force_plain=True)
             return None
 
         code = result.get("code")
         if code != 3000:
             print(f"[TTS] API error code={code}: {result.get('message', 'unknown')}")
+            if use_ssml:
+                return self.synthesize(text, mood, force_plain=True)
             return None
 
         audio_b64 = result.get("data")
         if not audio_b64:
             print("[TTS] No audio data in response")
+            if use_ssml:
+                return self.synthesize(text, mood, force_plain=True)
             return None
 
         try:
@@ -288,6 +298,29 @@ class TTSProvider:
         if hangul > cjk * 0.6 and hangul > kana:
             return "ko-KR"
         if kana > cjk * 0.6 and kana > hangul:
+            return "ja-JP"
+        if latin > 8 and latin > cjk * 1.4:
+            return "en-US"
+        return "zh-CN"
+
+    @staticmethod
+    def _detect_text_lang(text: str) -> str:
+        """Robust language detection for SSML xml:lang.
+
+        DJ narration is usually Chinese with song titles embedded in Korean,
+        Japanese, or English. Keep those mixed lines on zh-CN so the selected
+        base voice does not reject the whole sentence.
+        """
+        if not text:
+            return "zh-CN"
+        hangul = len(re.findall(r'[\uac00-\ud7af]', text))
+        kana = len(re.findall(r'[\u3040-\u30ff]', text))
+        cjk = len(re.findall(r'[\u4e00-\u9fff]', text))
+        latin = len(re.findall(r'[A-Za-z]', text))
+
+        if hangul >= 4 and hangul > (cjk + latin) * 1.15 and hangul > kana:
+            return "ko-KR"
+        if kana >= 4 and kana > (cjk + latin) * 1.15 and kana > hangul:
             return "ja-JP"
         if latin > 8 and latin > cjk * 1.4:
             return "en-US"

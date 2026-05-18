@@ -4,11 +4,13 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+from .paths import memory_db_path
+
 
 class DJMemory:
     def __init__(self, db_path: str | Path = None):
         if db_path is None:
-            db_path = Path(__file__).resolve().parent.parent.parent / "data" / "state.db"
+            db_path = memory_db_path()
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()

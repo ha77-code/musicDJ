@@ -5,9 +5,12 @@ import random
 from datetime import datetime, date
 from pathlib import Path
 
-DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-PROCESSED_DIR = DATA_DIR / "listening_history" / "processed"
-USER_PROFILE_DIR = Path(__file__).resolve().parent.parent.parent / "user_profile"
+from .paths import data_dir, processed_history_dir, raw_history_dir, user_profile_dir
+
+DATA_DIR = data_dir()
+PROCESSED_DIR = processed_history_dir()
+RAW_DIR = raw_history_dir()
+USER_PROFILE_DIR = user_profile_dir()
 
 
 class DJContext:
@@ -174,8 +177,7 @@ class DJContext:
             summary_parts.append("播放次数最多的歌曲（注意：次数多=喜欢这首歌，不能推断喜欢这个歌手）：\n" + "\n".join(song_lines))
 
         # Yearly listening trend
-        year_reports = self._load_json(
-            DATA_DIR / "listening_history" / "raw" / "year_report_2025.json")
+        year_reports = self._load_json(RAW_DIR / "year_report_2025.json")
         if year_reports:
             items = year_reports.get("data", {}).get("yearItems", [])
             recent = [i for i in items if i.get("year", 0) >= 2023]
@@ -184,8 +186,7 @@ class DJContext:
                 summary_parts.append(f"近年听歌趋势：{trend}。")
 
         # Total listening
-        total_data = self._load_json(
-            DATA_DIR / "listening_history" / "raw" / "total.json")
+        total_data = self._load_json(RAW_DIR / "total.json")
         if total_data:
             total_sec = total_data.get("data", {}).get("totalDuration", 0)
             total_hr = total_sec // 3600

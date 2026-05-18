@@ -3,8 +3,12 @@
 import json
 from pathlib import Path
 
-DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-PROCESSED_DIR = DATA_DIR / "listening_history" / "processed"
+from .paths import data_dir, processed_history_dir, raw_history_dir, user_profile_dir
+
+DATA_DIR = data_dir()
+PROCESSED_DIR = processed_history_dir()
+RAW_DIR = raw_history_dir()
+USER_PROFILE_DIR = user_profile_dir()
 
 
 def build_taste_profile() -> str:
@@ -40,7 +44,7 @@ def build_taste_profile() -> str:
         sections.append("### 最爱歌曲\n（注意：次数多=喜欢这首歌，不等同喜欢这个歌手）\n" + "\n".join(lines))
 
     # Total listening
-    total = _load(DATA_DIR / "listening_history" / "raw" / "total.json")
+    total = _load(RAW_DIR / "total.json")
     if total:
         sec = total.get("data", {}).get("totalDuration", 0)
         hr = sec // 3600
@@ -109,7 +113,7 @@ def build_taste_profile_search() -> dict:
         ]
 
     # Genres from user profile markdown + listening data
-    taste_md = Path(__file__).resolve().parent.parent.parent / "user_profile" / "taste.md"
+    taste_md = USER_PROFILE_DIR / "taste.md"
     if taste_md.exists():
         text = taste_md.read_text(encoding="utf-8")
         # Extract genre keywords

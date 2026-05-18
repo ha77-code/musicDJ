@@ -8,6 +8,7 @@ data/state.db-wal
 data/listening_stats.json
 data/playlist.json
 data/listening_history/
+logs/
 
 # Python
 __pycache__/
@@ -16,6 +17,15 @@ __pycache__/
 
 # Node
 node_modules/
+
+# Local packaging/toolchain caches
+.devtools/
+.venv-tauri/
+
+# Desktop build outputs
+src-tauri/target/
+src-tauri/binaries/*.exe
+NeteaseCloudMusicApi/api-enhanced-main/precompiled/
 
 # 本地音乐文件
 music/

@@ -55,7 +55,7 @@ where node >nul 2>&1
 if %errorlevel% equ 0 (
     echo [START] NeteaseCloudMusicApi on port 3000...
     cd /d "%~dp0NeteaseCloudMusicApi\api-enhanced-main"
-    start "NeteaseAPI" /min cmd /c "node app.js"
+    start "NeteaseAPI" /min cmd /c "set NCM_API_CHECK_VERSION=false&& set NCM_API_SKIP_ANONYMOUS_TOKEN=true&& node app.js"
     cd /d "%~dp0"
     timeout /t 3 /nobreak >nul
 )

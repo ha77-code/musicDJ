@@ -1,0 +1,37 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Music DJ",
+  "version": "0.1.0",
+  "identifier": "com.clauseekio.musicdj",
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "frontendDist": "../frontend",
+    "devUrl": "http://127.0.0.1:18765"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "useLocalToolsDir": true,
+    "externalBin": [
+      "binaries/musicdj-backend",
+      "binaries/netease-api"
+    ],
+    "resources": [
+      "../frontend",
+      "../config_example.json"
+    ],
+    "windows": {
+      "nsis": {
+        "displayLanguageSelector": false,
+        "installMode": "currentUser"
+      }
+    }
+  }
+}

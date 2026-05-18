@@ -12,12 +12,12 @@ Favor-familiar contexts raise familiar share to 35-45%.
 
 import json
 import random
-from pathlib import Path
 
+from .paths import data_dir, processed_history_dir
 from .runtime_taste import RuntimeTasteScorer
 
-DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-PROCESSED_DIR = DATA_DIR / "listening_history" / "processed"
+DATA_DIR = data_dir()
+PROCESSED_DIR = processed_history_dir()
 
 
 class CandidatePoolBuilder:
