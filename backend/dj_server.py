@@ -137,6 +137,8 @@ IMPORT_STATUS = {
     "finished_at": "",
     "error": "",
     "output_tail": "",
+    "playlist_seeded": False,
+    "playlist_count": 0,
 }
 LLM_PRESETS = [
     {"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deepseek.com", "model": "deepseek-chat"},
@@ -212,6 +214,73 @@ def _save_user_config(uid: str, updates: dict, activate: bool = True) -> str:
     return safe_uid
 
 
+def _record_id(prefix: str, payload: dict) -> str:
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True) + str(time.time())
+    return f"{prefix}_{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:12]}"
+
+
+def _public_llm_record(record: dict, active_id: str = "") -> dict:
+    return {
+        "id": record.get("id", ""),
+        "name": record.get("name", ""),
+        "provider": record.get("provider", "deepseek"),
+        "base_url": record.get("base_url", ""),
+        "model": record.get("model", ""),
+        "temperature": record.get("temperature", 1.05),
+        "max_tokens": record.get("max_tokens", 500),
+        "configured": _has_real_value(record.get("api_key", "")),
+        "active": record.get("id", "") == active_id,
+        "updated_at": record.get("updated_at", ""),
+    }
+
+
+def _public_voice_record(record: dict, active_id: str = "") -> dict:
+    volcano = record.get("volcano", {}) if isinstance(record.get("volcano", {}), dict) else {}
+    return {
+        "id": record.get("id", ""),
+        "name": record.get("name", ""),
+        "provider": record.get("provider", "browser"),
+        "voice_type": volcano.get("voice_type", ""),
+        "resource_id": volcano.get("resource_id", ""),
+        "encoding": volcano.get("encoding", ""),
+        "app_id_configured": _has_real_value(volcano.get("app_id", "")),
+        "token_configured": _has_real_value(volcano.get("token", "")),
+        "active": record.get("id", "") == active_id,
+        "updated_at": record.get("updated_at", ""),
+    }
+
+
+def _sorted_records(records: dict) -> list[dict]:
+    if not isinstance(records, dict):
+        return []
+    return sorted(records.values(), key=lambda r: r.get("updated_at", ""), reverse=True)
+
+
+def _apply_active_global_records(config: dict, root: dict) -> dict:
+    llm_id = root.get("active_llm_record_id", "")
+    llm_records = root.get("llm_records", {}) if isinstance(root.get("llm_records", {}), dict) else {}
+    llm_record = llm_records.get(llm_id) if llm_id else None
+    if isinstance(llm_record, dict):
+        config.setdefault("agent", {})["llm"] = {
+            "provider": llm_record.get("provider", "deepseek"),
+            "base_url": llm_record.get("base_url", ""),
+            "model": llm_record.get("model", ""),
+            "api_key": llm_record.get("api_key", ""),
+            "temperature": llm_record.get("temperature", 1.05),
+            "max_tokens": llm_record.get("max_tokens", 500),
+        }
+
+    voice_id = root.get("active_voice_record_id", "")
+    voice_records = root.get("voice_records", {}) if isinstance(root.get("voice_records", {}), dict) else {}
+    voice_record = voice_records.get(voice_id) if voice_id else None
+    if isinstance(voice_record, dict):
+        config["tts"] = {
+            "provider": voice_record.get("provider", "browser"),
+            "volcano": voice_record.get("volcano", {}) if isinstance(voice_record.get("volcano", {}), dict) else {},
+        }
+    return config
+
+
 def get_config():
     root = _root_config()
     active_uid, user_cfg = _active_user_config(root)
@@ -227,6 +296,7 @@ def get_config():
     if active_uid:
         config["active_user_id"] = active_uid
         config.setdefault("netease", {})["uid"] = config.get("netease", {}).get("uid") or active_uid
+    config = _apply_active_global_records(config, root)
     override_host = os.environ.get("MUSICDJ_NETEASE_API_HOST", "").strip()
     if override_host:
         config.setdefault("netease", {})["api_host"] = override_host
@@ -320,6 +390,8 @@ def _user_import_state(uid: str) -> dict:
     return {
         "has_imported_data": has_imported,
         "import_status": "imported" if has_imported else "not_imported",
+        "playlist_seeded": bool(playlist.get("seeded_from_import_at")),
+        "playlist_count": len(playlist.get("songs", [])) if isinstance(playlist.get("songs", []), list) else 0,
     }
 
 
@@ -451,6 +523,64 @@ def _refresh_runtime_config(config: dict) -> None:
         scheduler = DJScheduler(dj_brain, config) if dj_brain else None
 
 
+def _catalog_song_to_playlist_song(song: dict) -> dict | None:
+    sid = str(song.get("id") or song.get("netease_id") or "").strip()
+    title = str(song.get("name") or song.get("title") or "").strip()
+    if not sid or not title:
+        return None
+    duration_ms = song.get("duration_ms") or song.get("duration", 0)
+    try:
+        duration = int(duration_ms)
+    except Exception:
+        duration = 0
+    if duration > 10000:
+        duration = duration // 1000
+    cover = song.get("album_pic") or song.get("cover_url") or song.get("cover") or ""
+    return {
+        "source": "netease",
+        "netease_id": sid,
+        "path": "",
+        "title": title,
+        "artist": str(song.get("artist") or "").strip(),
+        "album": str(song.get("album") or "").strip(),
+        "duration": duration,
+        "tags": [],
+        "cover": cover,
+        "cover_url": cover,
+        "import_source": song.get("source", ""),
+        "tier": song.get("tier", ""),
+        "weight": song.get("weight", 0),
+    }
+
+
+def _seed_playlist_from_import(uid: str, limit: int = 300) -> dict:
+    safe_uid = paths._safe_user_id(uid)
+    data_path = paths.user_data_dir(safe_uid)
+    catalog_path = data_path / "listening_history" / "processed" / "song_catalog.json"
+    catalog = load_json(catalog_path, {})
+    songs = catalog.get("songs", []) if isinstance(catalog, dict) else []
+    playlist_songs = []
+    seen = set()
+    for song in songs:
+        if not isinstance(song, dict):
+            continue
+        item = _catalog_song_to_playlist_song(song)
+        if not item or item["netease_id"] in seen:
+            continue
+        seen.add(item["netease_id"])
+        playlist_songs.append(item)
+        if len(playlist_songs) >= limit:
+            break
+    playlist = {
+        "songs": playlist_songs,
+        "current_index": 0 if playlist_songs else -1,
+        "seeded_from_import_at": datetime.now().isoformat(),
+        "seeded_from": "netease_top300",
+    }
+    save_json(data_path / "playlist.json", playlist)
+    return {"playlist_seeded": bool(playlist_songs), "playlist_count": len(playlist_songs)}
+
+
 def _start_user_import(uid: str) -> bool:
     safe_uid = paths._safe_user_id(uid)
     if not safe_uid:
@@ -466,6 +596,8 @@ def _start_user_import(uid: str) -> bool:
             "finished_at": "",
             "error": "",
             "output_tail": "",
+            "playlist_seeded": False,
+            "playlist_count": 0,
         })
         try:
             collect_listening_data.BACKEND = f"http://127.0.0.1:{get_config().get('app', {}).get('port', 8765)}"
@@ -475,20 +607,27 @@ def _start_user_import(uid: str) -> bool:
                 collect_listening_data.main()
             finally:
                 sys.argv = old_argv
+            seed_state = _seed_playlist_from_import(safe_uid)
             IMPORT_STATUS["state"] = "done"
+            IMPORT_STATUS.update(seed_state)
             _update_user_netease_meta(safe_uid, {
                 "last_imported_at": datetime.now().isoformat(),
                 "last_import_ok": True,
                 "last_import_error": "",
+                **seed_state,
             })
             if paths.active_user_id() == safe_uid:
                 _refresh_runtime_config(get_config())
         except Exception as e:
             IMPORT_STATUS["state"] = "error"
             IMPORT_STATUS["error"] = str(e)
+            IMPORT_STATUS["playlist_seeded"] = False
+            IMPORT_STATUS["playlist_count"] = 0
             _update_user_netease_meta(safe_uid, {
                 "last_import_ok": False,
                 "last_import_error": str(e)[:180],
+                "playlist_seeded": False,
+                "playlist_count": 0,
             })
         finally:
             IMPORT_STATUS["finished_at"] = datetime.now().isoformat()
@@ -1171,51 +1310,46 @@ def api_user_import_status():
     netease = _user_netease_config(uid) if uid else {}
     state.update(import_state)
     state["last_imported_at"] = netease.get("last_imported_at", "")
+    state["last_import_error"] = netease.get("last_import_error", "")
+    if IMPORT_STATUS.get("uid") != uid or IMPORT_STATUS.get("state") != "running":
+        state["playlist_seeded"] = bool(netease.get("playlist_seeded", state.get("playlist_seeded", False)))
+        state["playlist_count"] = int(netease.get("playlist_count", state.get("playlist_count", 0)) or 0)
     return jsonify(state)
 
 
-@app.route("/api/local-account/llm", methods=["GET", "POST"])
-def api_local_llm():
+def _llm_records_payload(root: dict | None = None) -> dict:
+    root = root if root is not None else _root_config()
+    active_id = root.get("active_llm_record_id", "")
+    records = [_public_llm_record(r, active_id) for r in _sorted_records(root.get("llm_records", {}))]
     config = get_config()
     llm = config.get("agent", {}).get("llm", {})
-    if request.method == "GET":
-        return jsonify({
-            "presets": LLM_PRESETS,
+    return {
+        "presets": LLM_PRESETS,
+        "active_record_id": active_id,
+        "records": records,
+        "current": {
             "provider": llm.get("provider", "deepseek"),
             "base_url": llm.get("base_url", "https://api.deepseek.com"),
             "model": llm.get("model", "deepseek-chat"),
             "temperature": llm.get("temperature", 1.05),
             "max_tokens": llm.get("max_tokens", 500),
             "configured": _has_real_value(llm.get("api_key", "")),
-        })
-
-    uid = paths.active_user_id()
-    if not uid:
-        return jsonify({"error": "active user required"}), 400
-    data = request.get_json() or {}
-    llm_update = {
-        "provider": str(data.get("provider") or "deepseek").strip(),
-        "base_url": str(data.get("base_url") or "").strip(),
-        "model": str(data.get("model") or "").strip(),
-        "temperature": float(data.get("temperature", 1.05)),
-        "max_tokens": int(data.get("max_tokens", 500)),
+        },
     }
-    if "api_key" in data:
-        llm_update["api_key"] = str(data.get("api_key") or "").strip()
-    _save_user_config(uid, {"agent": {"llm": llm_update}}, activate=True)
-    config = get_config()
-    _refresh_runtime_config(config)
-    return jsonify({"ok": True, "llm": _public_config_summary(config)["llm"]})
 
 
-@app.route("/api/local-account/voice", methods=["GET", "POST"])
-def api_local_voice():
+def _voice_records_payload(root: dict | None = None) -> dict:
+    root = root if root is not None else _root_config()
+    active_id = root.get("active_voice_record_id", "")
+    records = [_public_voice_record(r, active_id) for r in _sorted_records(root.get("voice_records", {}))]
     config = get_config()
     tts = config.get("tts", {})
     volcano = tts.get("volcano", tts)
-    if request.method == "GET":
-        return jsonify({
-            "providers": VOICE_PROVIDERS,
+    return {
+        "providers": VOICE_PROVIDERS,
+        "active_record_id": active_id,
+        "records": records,
+        "current": {
             "provider": tts.get("provider", "browser"),
             "volcano": {
                 "voice_type": volcano.get("voice_type", "BV700_V2_streaming"),
@@ -1224,21 +1358,149 @@ def api_local_voice():
                 "app_id_configured": _has_real_value(volcano.get("app_id", "")),
                 "token_configured": _has_real_value(volcano.get("token", "")),
             },
-        })
+        },
+    }
 
-    uid = paths.active_user_id()
-    if not uid:
-        return jsonify({"error": "active user required"}), 400
-    data = request.get_json() or {}
-    provider = str(data.get("provider") or "browser").strip()
-    volcano_update = {}
+
+def _save_llm_record(data: dict) -> dict:
+    root = _root_config()
+    records = root.setdefault("llm_records", {})
+    record_id = str(data.get("id") or "").strip()
+    current = records.get(record_id, {}) if record_id else {}
+    provider = str(data.get("provider") or current.get("provider") or "deepseek").strip()
+    model = str(data.get("model") or current.get("model") or "").strip()
+    record = {
+        "id": record_id or _record_id("llm", data),
+        "name": str(data.get("name") or current.get("name") or f"{provider}/{model or 'model'}").strip(),
+        "provider": provider,
+        "base_url": str(data.get("base_url") or current.get("base_url") or "").strip(),
+        "model": model,
+        "api_key": current.get("api_key", ""),
+        "temperature": float(data.get("temperature", current.get("temperature", 1.05))),
+        "max_tokens": int(data.get("max_tokens", current.get("max_tokens", 500))),
+        "updated_at": datetime.now().isoformat(),
+    }
+    if "api_key" in data and str(data.get("api_key") or "").strip():
+        record["api_key"] = str(data.get("api_key") or "").strip()
+    records[record["id"]] = record
+    root["active_llm_record_id"] = record["id"]
+    _save_root_config(root)
+    return record
+
+
+def _save_voice_record(data: dict) -> dict:
+    root = _root_config()
+    records = root.setdefault("voice_records", {})
+    record_id = str(data.get("id") or "").strip()
+    current = records.get(record_id, {}) if record_id else {}
+    current_volcano = current.get("volcano", {}) if isinstance(current.get("volcano", {}), dict) else {}
+    provider = str(data.get("provider") or current.get("provider") or "browser").strip()
+    volcano = dict(current_volcano)
     for key in ("app_id", "token", "voice_type", "resource_id", "encoding"):
-        if key in data:
-            volcano_update[key] = str(data.get(key) or "").strip()
-    _save_user_config(uid, {"tts": {"provider": provider, "volcano": volcano_update}}, activate=True)
-    config = get_config()
-    _refresh_runtime_config(config)
-    return jsonify({"ok": True, "tts": _public_config_summary(config)["tts"]})
+        if key in data and (key not in {"app_id", "token"} or str(data.get(key) or "").strip()):
+            volcano[key] = str(data.get(key) or "").strip()
+    volcano.setdefault("voice_type", "BV700_V2_streaming")
+    volcano.setdefault("resource_id", "volc.tts.default")
+    volcano.setdefault("encoding", "mp3")
+    record = {
+        "id": record_id or _record_id("voice", data),
+        "name": str(data.get("name") or current.get("name") or f"{provider}/{volcano.get('voice_type', 'voice')}").strip(),
+        "provider": provider,
+        "volcano": volcano,
+        "updated_at": datetime.now().isoformat(),
+    }
+    records[record["id"]] = record
+    root["active_voice_record_id"] = record["id"]
+    _save_root_config(root)
+    return record
+
+
+@app.route("/api/local-records/llm", methods=["GET", "POST"])
+def api_llm_records():
+    if request.method == "GET":
+        return jsonify(_llm_records_payload())
+    record = _save_llm_record(request.get_json() or {})
+    _refresh_runtime_config(get_config())
+    return jsonify({"ok": True, "record": _public_llm_record(record, record.get("id", "")), "llm": _public_config_summary(get_config())["llm"]})
+
+
+@app.route("/api/local-records/llm/<record_id>/activate", methods=["POST"])
+def api_activate_llm_record(record_id):
+    root = _root_config()
+    if record_id not in (root.get("llm_records", {}) or {}):
+        return jsonify({"error": "unknown llm record"}), 404
+    root["active_llm_record_id"] = record_id
+    _save_root_config(root)
+    _refresh_runtime_config(get_config())
+    return jsonify({"ok": True, **_llm_records_payload(root)})
+
+
+@app.route("/api/local-records/llm/<record_id>", methods=["DELETE"])
+def api_delete_llm_record(record_id):
+    root = _root_config()
+    if root.get("active_llm_record_id") == record_id:
+        return jsonify({"error": "cannot delete active llm record"}), 400
+    records = root.get("llm_records", {}) or {}
+    if record_id not in records:
+        return jsonify({"error": "unknown llm record"}), 404
+    records.pop(record_id, None)
+    root["llm_records"] = records
+    _save_root_config(root)
+    return jsonify({"ok": True, **_llm_records_payload(root)})
+
+
+@app.route("/api/local-records/voice", methods=["GET", "POST"])
+def api_voice_records():
+    if request.method == "GET":
+        return jsonify(_voice_records_payload())
+    record = _save_voice_record(request.get_json() or {})
+    _refresh_runtime_config(get_config())
+    return jsonify({"ok": True, "record": _public_voice_record(record, record.get("id", "")), "tts": _public_config_summary(get_config())["tts"]})
+
+
+@app.route("/api/local-records/voice/<record_id>/activate", methods=["POST"])
+def api_activate_voice_record(record_id):
+    root = _root_config()
+    if record_id not in (root.get("voice_records", {}) or {}):
+        return jsonify({"error": "unknown voice record"}), 404
+    root["active_voice_record_id"] = record_id
+    _save_root_config(root)
+    _refresh_runtime_config(get_config())
+    return jsonify({"ok": True, **_voice_records_payload(root)})
+
+
+@app.route("/api/local-records/voice/<record_id>", methods=["DELETE"])
+def api_delete_voice_record(record_id):
+    root = _root_config()
+    if root.get("active_voice_record_id") == record_id:
+        return jsonify({"error": "cannot delete active voice record"}), 400
+    records = root.get("voice_records", {}) or {}
+    if record_id not in records:
+        return jsonify({"error": "unknown voice record"}), 404
+    records.pop(record_id, None)
+    root["voice_records"] = records
+    _save_root_config(root)
+    return jsonify({"ok": True, **_voice_records_payload(root)})
+
+
+@app.route("/api/local-account/llm", methods=["GET", "POST"])
+def api_local_llm():
+    if request.method == "GET":
+        payload = _llm_records_payload()
+        return jsonify({"presets": payload["presets"], **payload["current"]})
+    record = _save_llm_record(request.get_json() or {})
+    _refresh_runtime_config(get_config())
+    return jsonify({"ok": True, "record": _public_llm_record(record, record.get("id", "")), "llm": _public_config_summary(get_config())["llm"]})
+
+
+@app.route("/api/local-account/voice", methods=["GET", "POST"])
+def api_local_voice():
+    if request.method == "GET":
+        payload = _voice_records_payload()
+        return jsonify({"providers": payload["providers"], **payload["current"]})
+    record = _save_voice_record(request.get_json() or {})
+    _refresh_runtime_config(get_config())
+    return jsonify({"ok": True, "record": _public_voice_record(record, record.get("id", "")), "tts": _public_config_summary(get_config())["tts"]})
 
 
 @app.route("/api/playlist")

@@ -9,6 +9,7 @@ data/listening_stats.json
 data/personality.json
 data/playlist.json
 data/user_likes.json
+data/_anonymous/
 data/listening_history/
 data/.ncm_cache/
 data/voice_memos/

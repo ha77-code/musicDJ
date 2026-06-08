@@ -995,19 +995,19 @@
     display: flex;
     gap: 10px;
     overflow-x: auto;
-    padding: 11px;
-    border-radius: 22px;
+    padding: 12px;
+    border-radius: 18px;
     background: rgba(255, 255, 255, 0.74);
     border: 1px solid rgba(15, 23, 42, 0.06);
     box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
   }
 
   .paper-rec-card {
-    min-width: min(330px, 82vw);
-    max-width: 380px;
+    min-width: min(520px, 92vw);
+    max-width: 620px;
     display: grid;
-    grid-template-columns: 52px minmax(0, 1fr) auto;
-    align-items: center;
+    grid-template-columns: 64px minmax(0, 1fr) auto;
+    align-items: start;
     gap: 12px;
     padding: 8px 10px;
     border-radius: 16px;
@@ -1017,8 +1017,8 @@
   }
 
   .paper-rec-cover {
-    width: 52px;
-    height: 52px;
+    width: 64px;
+    height: 64px;
     border-radius: 12px;
     object-fit: cover;
     background: linear-gradient(145deg, #dce7e1, #34d399);
@@ -1026,20 +1026,18 @@
 
   .paper-rec-title {
     color: #14201a;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 800;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
   }
 
   .paper-rec-artist {
     color: rgba(17, 24, 20, 0.58);
-    font-size: 11px;
+    font-size: 12px;
+    line-height: 1.35;
     margin-top: 4px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
 
   .paper-rec-actions {
@@ -2936,6 +2934,7 @@ const RecommendationStrip = ({ cards, onPlay, onAdd }) => {
             <div className="min-w-0">
               <div className="paper-rec-title">{card.title || '未知歌曲'}</div>
               <div className="paper-rec-artist">{card.artist || card.reason || 'AI DJ 推荐'}</div>
+              {(card.album || card.reason) && <div className="paper-rec-artist">{card.album || card.reason}</div>}
             </div>
             <div className="paper-rec-actions">
               <button onClick={() => onPlay(originalIndex)} title="播放">▶</button>
@@ -3348,12 +3347,14 @@ const LikesModal = ({ show, onClose, onRefresh, playlistSongs }) => {
   );
 };
 
-const AccountSettingsModal = ({ show, onClose, status, onSaved }) => {
+const AccountSettingsModal = ({ show, onClose, status, onSaved, onImportDone }) => {
   const [tab, setTab] = useState('netease');
   const [msg, setMsg] = useState('');
   const [netease, setNetease] = useState({ enabled: false, api_host: 'http://localhost:3000', uid: '', cookie: '' });
   const [llm, setLlm] = useState({ presets: [], provider: 'deepseek', base_url: 'https://api.deepseek.com', model: 'deepseek-chat', api_key: '', temperature: 1.05, max_tokens: 500 });
   const [voice, setVoice] = useState({ providers: [], provider: 'browser', app_id: '', token: '', voice_type: 'BV700_V2_streaming', resource_id: 'volc.tts.default', encoding: 'mp3' });
+  const [llmRecords, setLlmRecords] = useState({ records: [], active_record_id: '' });
+  const [voiceRecords, setVoiceRecords] = useState({ records: [], active_record_id: '' });
   const [users, setUsers] = useState({ active_user_id: '', users: [] });
   const [importStatus, setImportStatus] = useState({ state: 'idle' });
   const configured = !!status?.configured;
@@ -3368,10 +3369,12 @@ const AccountSettingsModal = ({ show, onClose, status, onSaved }) => {
       const l = await api('/api/local-account/llm');
       setLlm(v => ({ ...v, ...l, api_key: '' }));
     } catch (e) {}
+    try { setLlmRecords(await api('/api/local-records/llm')); } catch (e) {}
     try {
       const vc = await api('/api/local-account/voice');
       setVoice(v => ({ ...v, providers: vc.providers || [], provider: vc.provider || 'browser', voice_type: vc.volcano?.voice_type || 'BV700_V2_streaming', resource_id: vc.volcano?.resource_id || 'volc.tts.default', encoding: vc.volcano?.encoding || 'mp3', app_id: '', token: '' }));
     } catch (e) {}
+    try { setVoiceRecords(await api('/api/local-records/voice')); } catch (e) {}
     try { setUsers(await api('/api/users')); } catch (e) {}
     try { setImportStatus(await api('/api/user/import/status')); } catch (e) {}
   }, [onSaved]);
@@ -3424,11 +3427,34 @@ const AccountSettingsModal = ({ show, onClose, status, onSaved }) => {
       setMsg('请先点击“使用”切换到该账号，再导入数据');
       return;
     }
+    if (importStatus.state === 'running') {
+      setMsg('当前账号正在导入中，请等待完成');
+      return;
+    }
     setMsg(`开始导入账号 ${uid} 的网易云数据...`);
     try {
       await api('/api/user/import/start', 'POST', {});
       await refreshAll();
       setMsg('已启动导入任务');
+      const startedAt = Date.now();
+      const timer = setInterval(async () => {
+        try {
+          const st = await api('/api/user/import/status');
+          setImportStatus(st);
+          if (st.state === 'done') {
+            clearInterval(timer);
+            setMsg(`导入完成，已写入 ${st.playlist_count || 0} 首到当前歌单`);
+            onImportDone && onImportDone(st);
+            await refreshAll();
+          } else if (st.state === 'error') {
+            clearInterval(timer);
+            setMsg(`导入失败：${st.last_import_error || st.error || '未知错误'}`);
+            await refreshAll();
+          } else if (Date.now() - startedAt > 180000) {
+            clearInterval(timer);
+          }
+        } catch (e) {}
+      }, 2500);
     } catch (e) { setMsg(e.message || '导入失败'); }
   };
 
@@ -3437,8 +3463,8 @@ const AccountSettingsModal = ({ show, onClose, status, onSaved }) => {
     try {
       const payload = { provider: llm.provider, base_url: llm.base_url, model: llm.model, temperature: Number(llm.temperature), max_tokens: Number(llm.max_tokens) };
       if (llm.api_key.trim()) payload.api_key = llm.api_key.trim();
-      await api('/api/local-account/llm', 'POST', payload);
-      setMsg('模型配置已保存到当前用户');
+      await api('/api/local-records/llm', 'POST', payload);
+      setMsg('模型配置已保存为记录并启用');
       await refreshAll();
     } catch (e) { setMsg(e.message || '保存失败'); }
   };
@@ -3449,10 +3475,46 @@ const AccountSettingsModal = ({ show, onClose, status, onSaved }) => {
       const payload = { provider: voice.provider, voice_type: voice.voice_type, resource_id: voice.resource_id, encoding: voice.encoding };
       if (voice.app_id.trim()) payload.app_id = voice.app_id.trim();
       if (voice.token.trim()) payload.token = voice.token.trim();
-      await api('/api/local-account/voice', 'POST', payload);
-      setMsg('语音配置已保存到当前用户');
+      await api('/api/local-records/voice', 'POST', payload);
+      setMsg('语音配置已保存为记录并启用');
       await refreshAll();
     } catch (e) { setMsg(e.message || '保存失败'); }
+  };
+
+  const activateLlmRecord = async (id) => {
+    setMsg('切换模型配置...');
+    try {
+      await api(`/api/local-records/llm/${encodeURIComponent(id)}/activate`, 'POST');
+      setMsg('模型配置已切换');
+      await refreshAll();
+    } catch (e) { setMsg(e.message || '切换失败'); }
+  };
+
+  const deleteLlmRecord = async (id) => {
+    if (!confirm('删除这条模型配置记录？')) return;
+    try {
+      await api(`/api/local-records/llm/${encodeURIComponent(id)}`, 'DELETE');
+      setMsg('模型配置记录已删除');
+      await refreshAll();
+    } catch (e) { setMsg(e.message || '删除失败'); }
+  };
+
+  const activateVoiceRecord = async (id) => {
+    setMsg('切换语音配置...');
+    try {
+      await api(`/api/local-records/voice/${encodeURIComponent(id)}/activate`, 'POST');
+      setMsg('语音配置已切换');
+      await refreshAll();
+    } catch (e) { setMsg(e.message || '切换失败'); }
+  };
+
+  const deleteVoiceRecord = async (id) => {
+    if (!confirm('删除这条语音配置记录？')) return;
+    try {
+      await api(`/api/local-records/voice/${encodeURIComponent(id)}`, 'DELETE');
+      setMsg('语音配置记录已删除');
+      await refreshAll();
+    } catch (e) { setMsg(e.message || '删除失败'); }
   };
 
   const deleteUser = async (uid, active) => {
@@ -3505,7 +3567,23 @@ const AccountSettingsModal = ({ show, onClose, status, onSaved }) => {
             <input type="number" step="0.01" value={llm.temperature} onChange={e => setLlm(v => ({ ...v, temperature: e.target.value }))} />
             <input type="number" value={llm.max_tokens} onChange={e => setLlm(v => ({ ...v, max_tokens: e.target.value }))} />
           </div>
-          <button className="btn btn-grad" onClick={saveLlm}>保存模型</button>
+          <button className="btn btn-grad" onClick={saveLlm}>保存为记录并使用</button>
+          <div className="pt-2 space-y-2">
+            {(llmRecords.records || []).map(r => <div key={r.id} className="rounded-lg border border-emerald-300/10 p-3 text-xs">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-emerald-50/90 font-semibold truncate">{r.name || r.provider}{r.active ? '（当前使用中）' : ''}</div>
+                  <div className="text-emerald-50/55 mt-1 truncate">{r.provider} · {r.model || '未设置模型'}</div>
+                  <div className="text-emerald-50/55 mt-1 truncate">{r.base_url || '未设置 base_url'} · Key：{r.configured ? '已配置' : '未配置'}</div>
+                </div>
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  <button className="btn btn-ghost text-[10px] py-1 px-2" disabled={r.active} onClick={() => activateLlmRecord(r.id)}>{r.active ? '当前' : '使用'}</button>
+                  <button className="btn btn-ghost text-[10px] py-1 px-2" disabled={r.active} onClick={() => deleteLlmRecord(r.id)}>删除</button>
+                </div>
+              </div>
+            </div>)}
+            {!(llmRecords.records || []).length && <div className="text-xs text-emerald-50/50">还没有模型配置记录。</div>}
+          </div>
         </div>}
         {tab === 'voice' && <div className="space-y-3">
           <select className="w-full p-2 rounded bg-black/40 border border-emerald-300/20 text-emerald-50" value={voice.provider} onChange={e => setVoice(v => ({ ...v, provider: e.target.value }))}>
@@ -3517,7 +3595,23 @@ const AccountSettingsModal = ({ show, onClose, status, onSaved }) => {
             <input value={voice.voice_type} onChange={e => setVoice(v => ({ ...v, voice_type: e.target.value }))} placeholder="voice_type" />
             <input value={voice.resource_id} onChange={e => setVoice(v => ({ ...v, resource_id: e.target.value }))} placeholder="resource_id" />
           </>}
-          <button className="btn btn-grad" onClick={saveVoice}>保存语音</button>
+          <button className="btn btn-grad" onClick={saveVoice}>保存为记录并使用</button>
+          <div className="pt-2 space-y-2">
+            {(voiceRecords.records || []).map(r => <div key={r.id} className="rounded-lg border border-emerald-300/10 p-3 text-xs">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-emerald-50/90 font-semibold truncate">{r.name || r.provider}{r.active ? '（当前使用中）' : ''}</div>
+                  <div className="text-emerald-50/55 mt-1 truncate">{r.provider} · {r.voice_type || '浏览器本地语音'}</div>
+                  <div className="text-emerald-50/55 mt-1">火山 App：{r.app_id_configured ? '已配置' : '未配置'} · Token：{r.token_configured ? '已配置' : '未配置'}</div>
+                </div>
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  <button className="btn btn-ghost text-[10px] py-1 px-2" disabled={r.active} onClick={() => activateVoiceRecord(r.id)}>{r.active ? '当前' : '使用'}</button>
+                  <button className="btn btn-ghost text-[10px] py-1 px-2" disabled={r.active} onClick={() => deleteVoiceRecord(r.id)}>删除</button>
+                </div>
+              </div>
+            </div>)}
+            {!(voiceRecords.records || []).length && <div className="text-xs text-emerald-50/50">还没有语音配置记录。</div>}
+          </div>
         </div>}
         {tab === 'users' && <div className="space-y-2">
           {(users.users || []).map(u => <div key={u.uid} className="rounded-lg border border-emerald-300/10 p-3 text-xs">
@@ -3525,13 +3619,13 @@ const AccountSettingsModal = ({ show, onClose, status, onSaved }) => {
               <div className="min-w-0">
                 <div className="text-emerald-50/90 font-semibold truncate">{u.nickname || '网易云账号'}{u.active ? '（当前使用中）' : ''}</div>
                 <div className="text-emerald-50/55 mt-1">UID：{u.uid} · {u.file_count || 0} 文件</div>
-                <div className="text-emerald-50/60 mt-1">连接：{connectionLabel(u.connection_status)} · 导入：{importLabel(u.import_status)}</div>
+                <div className="text-emerald-50/60 mt-1">连接：{connectionLabel(u.connection_status)} · 导入：{importLabel(u.import_status)} · 歌单：{u.playlist_count || 0} 首</div>
                 {(u.last_error || u.last_import_error) && <div className="text-amber-100/70 mt-1 truncate">{u.last_error || u.last_import_error}</div>}
               </div>
               <div className="flex flex-wrap justify-end gap-1.5">
                 <button className="btn btn-ghost text-[10px] py-1 px-2" disabled={u.active} onClick={() => activateUser(u.uid)}>{u.active ? '当前' : '使用'}</button>
                 <button className="btn btn-ghost text-[10px] py-1 px-2" onClick={() => checkConnection(u.uid)}>检查连接</button>
-                <button className="btn btn-ghost text-[10px] py-1 px-2" onClick={() => importCurrentUser(u.uid, u.active)}>导入</button>
+                <button className="btn btn-ghost text-[10px] py-1 px-2" disabled={importStatus.state === 'running'} onClick={() => importCurrentUser(u.uid, u.active)}>{importStatus.state === 'running' && u.active ? '导入中' : '导入'}</button>
                 <button className="btn btn-ghost text-[10px] py-1 px-2" onClick={() => deleteUser(u.uid, u.active)}>{u.active ? '重置' : '清除'}</button>
               </div>
             </div>
@@ -4369,13 +4463,20 @@ const executeActions = useCallback(async (actions) => {
             const results = sr?.result?.songs || [];
             if (results.length > 0) {
               const s = results[0];
-              setRecCards(prev => [...prev, {
+              const rec = {
                 title: s.name,
                 artist: (s.artists || s.ar || []).map(a => a.name).join(' / '),
                 netease_id: String(s.id),
+                source: 'netease',
                 cover: s.al?.picUrl || '',
+                cover_url: s.al?.picUrl || '',
+                album: s.al?.name || '',
+                path: '',
+                tags: [],
                 reason: 'AI DJ 推荐'
-              }]);
+              };
+              playDirectSongRef.current?.(rec);
+              setRecCards(prev => [...prev, rec]);
             } else {
               setRecCards(prev => [...prev, { title: rTitle, artist: rArtist, reason: 'AI DJ 推荐' }]);
             }
@@ -4422,6 +4523,19 @@ executeActionsRef.current = executeActions;
   // Refresh playlist
   const refreshPlaylist = useCallback(async () => {
     try { const pl = await api('/api/playlist'); dispatch({ type: 'SET_PLAYLIST', payload: pl }); } catch (e) {}
+  }, []);
+
+  const handleAccountImportDone = useCallback(async () => {
+    try {
+      const pl = await api('/api/playlist');
+      dispatch({ type: 'SET_PLAYLIST', payload: pl });
+      if ((pl.songs || []).length && !stateRef.current.currentSong) {
+        setTimeout(() => {
+          audioActionsRef.current?.loadSong(0);
+          audioActionsRef.current?.play();
+        }, 300);
+      }
+    } catch (e) {}
   }, []);
   // Delete song
   const deleteSong = useCallback(async (idx) => {
@@ -4580,7 +4694,7 @@ executeActionsRef.current = executeActions;
       <NeteaseSearchModal show={modal.search} onClose={() => { setModal(m => ({ ...m, search: false })); setSearchInitKw(''); }} onPlayDirect={playDirectSong} onRefresh={refreshPlaylist} playlistSongs={state.playlist.songs} initKw={searchInitKw} />
       <PlaylistImportModal show={modal.playlist} onClose={() => setModal(m => ({ ...m, playlist: false }))} onRefresh={refreshPlaylist} playlistSongs={state.playlist.songs} />
       <LikesModal show={modal.likes} onClose={() => setModal(m => ({ ...m, likes: false }))} onRefresh={refreshPlaylist} playlistSongs={state.playlist.songs} />
-      <AccountSettingsModal show={modal.account} onClose={() => setModal(m => ({ ...m, account: false }))} status={accountStatus} onSaved={setAccountStatus} />
+      <AccountSettingsModal show={modal.account} onClose={() => setModal(m => ({ ...m, account: false }))} status={accountStatus} onSaved={setAccountStatus} onImportDone={handleAccountImportDone} />
     </div>
   );
 }
