@@ -18,13 +18,15 @@ MusicDJ 由 Flask 后端和单文件 React/Babel 前端组成：
 - SQLite 和 JSON 文件记录听歌记忆、跳过、喜欢、播放次数和口味画像。
 - 前端使用 Web Audio 做频谱和波形律动。
 
+网易云音乐接口使用的是 [NeteaseCloudMusicApiBackup](https://github.com/nooblong/NeteaseCloudMusicApiBackup) 项目，本仓库的 `NeteaseCloudMusicApi/` 目录基于该 API 服务用于本地搜索、歌单、喜欢列表和听歌记录导入。
+
 这个项目主要面向个人使用，不追求公共产品式完整包装。
 
 ## Quick Start
 
 环境要求：
 - Python 3.10+
-- Node.js，用于运行网易云 API 服务
+- Node.js，用于运行 [NeteaseCloudMusicApiBackup](https://github.com/nooblong/NeteaseCloudMusicApiBackup) 网易云 API 服务
 - 可选：DeepSeek API、火山引擎 TTS、OpenWeatherMap、网易云 Cookie
 
 安装 Python 依赖：
@@ -165,7 +167,7 @@ musicDJ/
 │   ├── listening_stats.json     # 运行时播放统计
 │   ├── state.db                 # SQLite DJ 记忆
 │   └── listening_history/       # 网易云听歌历史和处理后的口味画像
-├── NeteaseCloudMusicApi/        # 网易云 API 服务
+├── NeteaseCloudMusicApi/        # 基于 NeteaseCloudMusicApiBackup 的网易云 API 服务
 ├── config_example.json          # 配置模板
 ├── config.json                  # 本地配置，含私密信息
 └── start_dj.bat                 # 一键启动
