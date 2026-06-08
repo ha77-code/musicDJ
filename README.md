@@ -84,7 +84,7 @@ http://127.0.0.1:8765/
 3. 进入 `Application`（Edge/Chrome 中文界面可能叫“应用程序”）。
 4. 在左侧找到 `Storage` / `Cookies`，选择 `https://music.163.com`。
 5. 找到名为 `MUSIC_U` 的 Cookie。
-6. 复制 Cookie，粘贴到 musicDJ 的账号设置里。可以只粘贴 `MUSIC_U=...`，也可以粘贴包含 `MUSIC_U=...` 的完整 Cookie 字符串。
+6. 复制 Cookie，粘贴到 musicDJ 的账号设置里。可以只粘贴 `MUSIC_U` 的 Value 长串，程序会自动补成 `MUSIC_U=...`；也可以粘贴包含 `MUSIC_U=...` 的完整 Cookie 字符串。
 7. UID 可以从网易云个人主页 URL 获取，例如 `https://music.163.com/#/user/home?id=123456` 里的 `123456`。
 
 保存后检查两个状态：

@@ -15,6 +15,7 @@ import threading
 import gc
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote
 
 import requests
 from flask import Flask, jsonify, request, send_from_directory, send_file, Response, redirect
@@ -128,7 +129,7 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("musicdj.backend")
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.2.1"
 IMPORT_STATUS = {
     "state": "idle",
     "uid": "",
@@ -260,6 +261,18 @@ def _is_placeholder_secret(value) -> bool:
 def _has_real_cookie(value) -> bool:
     text = str(value or "").strip()
     return bool(text and not _is_placeholder_secret(text) and "MUSIC_U=" in text)
+
+
+def _normalize_netease_cookie(value) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    decoded = unquote(text)
+    if "MUSIC_U=" in decoded:
+        return decoded
+    if "=" not in decoded and ";" not in decoded and len(decoded) >= 32:
+        return f"MUSIC_U={decoded}"
+    return decoded
 
 
 def _has_real_value(value) -> bool:
@@ -997,7 +1010,7 @@ def api_local_netease_account():
         api_host = str(data.get("api_host") or "").strip()
         netease["api_host"] = api_host or "http://localhost:3000"
     if "cookie" in data:
-        netease["cookie"] = str(data.get("cookie") or "").strip()
+        netease["cookie"] = _normalize_netease_cookie(data.get("cookie"))
     if "uid" in data:
         netease["uid"] = str(data.get("uid") or "").strip()
 
