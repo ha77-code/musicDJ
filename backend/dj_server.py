@@ -278,7 +278,109 @@ def _netease_config_summary(config: dict) -> dict:
         "has_uid": _has_real_value(uid),
         "configured": enabled and _has_real_cookie(cookie),
         "uid": str(uid) if _has_real_value(uid) else "",
+        "nickname": netease.get("nickname", ""),
+        "connection_status": _netease_connection_status(netease),
+        "last_checked_at": netease.get("last_checked_at", ""),
+        "last_imported_at": netease.get("last_imported_at", ""),
         "active_user_id": config.get("active_user_id", paths.active_user_id()),
+    }
+
+
+def _netease_connection_status(netease: dict) -> str:
+    if "last_connection_ok" not in netease:
+        return "unknown"
+    return "connected" if netease.get("last_connection_ok") else "failed"
+
+
+def _user_import_state(uid: str) -> dict:
+    safe_uid = paths._safe_user_id(uid)
+    data_path = paths.user_data_dir(safe_uid)
+    playlist = load_json(data_path / "playlist.json", {})
+    likes = load_json(data_path / "user_likes.json", {})
+    processed_dir = data_path / "listening_history" / "processed"
+    profile_dir = data_path / "user_profile"
+    has_processed = processed_dir.exists() and any(p.is_file() for p in processed_dir.rglob("*"))
+    has_profile = profile_dir.exists() and any(p.is_file() for p in profile_dir.rglob("*"))
+    has_playlist = bool(playlist.get("songs"))
+    has_likes = bool(likes.get("ids") or likes.get("songs") or likes.get("data"))
+    has_imported = has_processed or has_profile or has_playlist or has_likes
+    return {
+        "has_imported_data": has_imported,
+        "import_status": "imported" if has_imported else "not_imported",
+    }
+
+
+def _user_netease_config(uid: str, root: dict | None = None) -> dict:
+    root = root if root is not None else _root_config()
+    user_cfg = (root.get("users", {}) or {}).get(paths._safe_user_id(uid), {})
+    netease = user_cfg.get("netease", {}) if isinstance(user_cfg, dict) else {}
+    return netease if isinstance(netease, dict) else {}
+
+
+def _update_user_netease_meta(uid: str, updates: dict) -> None:
+    safe_uid = paths._safe_user_id(uid)
+    if not safe_uid:
+        return
+    root = _root_config()
+    users = root.setdefault("users", {})
+    user_cfg = users.setdefault(safe_uid, {})
+    netease = user_cfg.setdefault("netease", {})
+    netease.update(updates)
+    _save_root_config(root)
+
+
+def _check_netease_connection_for_uid(uid: str) -> dict:
+    safe_uid = paths._safe_user_id(uid)
+    netease = _user_netease_config(safe_uid)
+    now = datetime.now().isoformat()
+    meta = {
+        "last_checked_at": now,
+        "last_connection_ok": False,
+        "last_error": "",
+    }
+    if not netease.get("enabled", False):
+        meta["last_error"] = "netease disabled"
+        _update_user_netease_meta(safe_uid, meta)
+        return {"ok": False, "connection_status": "failed", "error": meta["last_error"]}
+    cookie = netease.get("cookie", "")
+    if not _has_real_cookie(cookie):
+        meta["last_error"] = "missing MUSIC_U cookie"
+        _update_user_netease_meta(safe_uid, meta)
+        return {"ok": False, "connection_status": "failed", "error": meta["last_error"]}
+
+    host = netease.get("api_host", "http://localhost:3000")
+    try:
+        resp = requests.get(
+            f"{host}/user/detail",
+            params={"uid": safe_uid},
+            headers={"Cookie": cookie},
+            timeout=6,
+        )
+        if resp.status_code != 200:
+            meta["last_error"] = f"http {resp.status_code}"
+        else:
+            body = resp.json()
+            profile = body.get("profile") or body.get("data", {}).get("profile") or {}
+            nickname = profile.get("nickname") or body.get("nickname") or ""
+            code = body.get("code", 200)
+            if code == 200 and (profile or nickname):
+                meta.update({
+                    "last_connection_ok": True,
+                    "last_error": "",
+                    "nickname": str(nickname or ""),
+                })
+            else:
+                meta["last_error"] = str(body.get("message") or body.get("msg") or f"code {code}")
+    except Exception as e:
+        meta["last_error"] = str(e)[:180]
+
+    _update_user_netease_meta(safe_uid, meta)
+    return {
+        "ok": bool(meta["last_connection_ok"]),
+        "connection_status": "connected" if meta["last_connection_ok"] else "failed",
+        "nickname": meta.get("nickname", ""),
+        "last_checked_at": meta["last_checked_at"],
+        "error": meta["last_error"],
     }
 
 
@@ -361,11 +463,20 @@ def _start_user_import(uid: str) -> bool:
             finally:
                 sys.argv = old_argv
             IMPORT_STATUS["state"] = "done"
+            _update_user_netease_meta(safe_uid, {
+                "last_imported_at": datetime.now().isoformat(),
+                "last_import_ok": True,
+                "last_import_error": "",
+            })
             if paths.active_user_id() == safe_uid:
                 _refresh_runtime_config(get_config())
         except Exception as e:
             IMPORT_STATUS["state"] = "error"
             IMPORT_STATUS["error"] = str(e)
+            _update_user_netease_meta(safe_uid, {
+                "last_import_ok": False,
+                "last_import_error": str(e)[:180],
+            })
         finally:
             IMPORT_STATUS["finished_at"] = datetime.now().isoformat()
 
@@ -891,19 +1002,22 @@ def api_local_netease_account():
         netease["uid"] = str(data.get("uid") or "").strip()
 
     netease.setdefault("uid", uid)
+    netease["last_used_at"] = datetime.now().isoformat()
     safe_uid = _save_user_config(uid, {"netease": netease}, activate=True)
+    connection = _check_netease_connection_for_uid(safe_uid)
     config = get_config()
     _refresh_runtime_config(config)
-    if data.get("auto_import", True):
+    if data.get("auto_import", False) and connection.get("ok"):
         _start_user_import(safe_uid)
-    return jsonify({"ok": True, "netease": _netease_config_summary(config)})
+    return jsonify({"ok": True, "connection": connection, "netease": _netease_config_summary(get_config())})
 
 
 @app.route("/api/users", methods=["GET"])
 def api_users():
     root = _root_config()
     active_uid = paths.active_user_id()
-    configured = set((root.get("users", {}) or {}).keys())
+    users_cfg = root.get("users", {}) or {}
+    configured = set(users_cfg.keys())
     disk = set()
     users_root = paths.users_root_dir()
     if users_root.exists():
@@ -913,15 +1027,65 @@ def api_users():
         data_path = paths.user_data_dir(uid)
         stat_files = [p for p in data_path.rglob("*") if p.is_file()] if data_path.exists() else []
         last_modified = max((p.stat().st_mtime for p in stat_files), default=None)
+        user_cfg = users_cfg.get(uid, {}) if isinstance(users_cfg, dict) else {}
+        netease = user_cfg.get("netease", {}) if isinstance(user_cfg, dict) else {}
+        netease = netease if isinstance(netease, dict) else {}
+        import_state = _user_import_state(uid)
+        if IMPORT_STATUS.get("uid") == uid and IMPORT_STATUS.get("state") == "running":
+            import_state["import_status"] = "running"
+        elif netease.get("last_import_ok") is False:
+            import_state["import_status"] = "failed"
         users.append({
             "uid": uid,
+            "nickname": netease.get("nickname", ""),
             "active": uid == active_uid,
             "configured": uid in configured,
+            "enabled": bool(netease.get("enabled", False)),
+            "has_cookie": _has_real_cookie(netease.get("cookie", "")),
+            "connection_status": _netease_connection_status(netease),
+            "last_checked_at": netease.get("last_checked_at", ""),
+            "last_error": netease.get("last_error", ""),
+            "last_used_at": netease.get("last_used_at", ""),
+            "last_imported_at": netease.get("last_imported_at", ""),
+            "last_import_error": netease.get("last_import_error", ""),
+            **import_state,
             "has_data": data_path.exists(),
             "file_count": len(stat_files),
             "last_modified": datetime.fromtimestamp(last_modified).isoformat() if last_modified else "",
         })
     return jsonify({"active_user_id": active_uid, "users": users})
+
+
+@app.route("/api/users/<uid>/activate", methods=["POST"])
+def api_activate_user(uid):
+    safe_uid = paths._safe_user_id(uid)
+    if not safe_uid:
+        return jsonify({"error": "uid required"}), 400
+    root = _root_config()
+    users_cfg = root.get("users", {}) or {}
+    data_path = paths.user_data_dir(safe_uid)
+    if safe_uid not in users_cfg and not data_path.exists():
+        return jsonify({"error": "unknown local user"}), 404
+    root["active_user_id"] = safe_uid
+    users_cfg.setdefault(safe_uid, {}).setdefault("netease", {})["last_used_at"] = datetime.now().isoformat()
+    root["users"] = users_cfg
+    _save_root_config(root)
+    paths.set_active_user_id(safe_uid)
+    paths.ensure_runtime_layout()
+    _refresh_runtime_config(get_config())
+    return jsonify({"ok": True, "netease": _netease_config_summary(get_config())})
+
+
+@app.route("/api/users/<uid>/check-connection", methods=["POST"])
+def api_check_user_connection(uid):
+    safe_uid = paths._safe_user_id(uid)
+    if not safe_uid:
+        return jsonify({"error": "uid required"}), 400
+    root = _root_config()
+    if safe_uid not in (root.get("users", {}) or {}):
+        return jsonify({"error": "unknown configured user"}), 404
+    result = _check_netease_connection_for_uid(safe_uid)
+    return jsonify(result)
 
 
 @app.route("/api/users/<uid>/data", methods=["DELETE"])
@@ -983,7 +1147,18 @@ def api_user_import_start():
 
 @app.route("/api/user/import/status")
 def api_user_import_status():
-    return jsonify(IMPORT_STATUS)
+    uid = paths.active_user_id()
+    state = dict(IMPORT_STATUS)
+    state["uid"] = uid or state.get("uid", "")
+    import_state = _user_import_state(uid) if uid else {"has_imported_data": False, "import_status": "not_imported"}
+    if IMPORT_STATUS.get("uid") == uid and IMPORT_STATUS.get("state") == "running":
+        import_state["import_status"] = "running"
+    elif _user_netease_config(uid).get("last_import_ok") is False:
+        import_state["import_status"] = "failed"
+    netease = _user_netease_config(uid) if uid else {}
+    state.update(import_state)
+    state["last_imported_at"] = netease.get("last_imported_at", "")
+    return jsonify(state)
 
 
 @app.route("/api/local-account/llm", methods=["GET", "POST"])
