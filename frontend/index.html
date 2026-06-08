@@ -3391,13 +3391,45 @@ const AccountSettingsModal = ({ show, onClose, status, onSaved }) => {
   const saveNetease = async () => {
     setMsg('保存网易云账号...');
     try {
-      const payload = { enabled: netease.enabled, api_host: netease.api_host, uid: netease.uid, auto_import: true };
+      const payload = { enabled: netease.enabled, api_host: netease.api_host, uid: netease.uid, auto_import: false };
       if (netease.cookie.trim()) payload.cookie = netease.cookie.trim();
       const r = await api('/api/local-account/netease', 'POST', payload);
       onSaved && onSaved(r.netease);
-      setMsg('已保存，并已启动当前账号的数据导入');
+      setMsg(r.connection?.ok ? '账号已保存，连接成功' : `账号已保存，连接检查失败：${r.connection?.error || '请检查 Cookie 或 API 服务'}`);
       await refreshAll();
     } catch (e) { setMsg(e.message || '保存失败'); }
+  };
+
+  const activateUser = async (uid) => {
+    setMsg(`切换到账号 ${uid}...`);
+    try {
+      const r = await api(`/api/users/${encodeURIComponent(uid)}/activate`, 'POST');
+      onSaved && onSaved(r.netease);
+      setMsg('已切换账号，当前运行数据已刷新');
+      await refreshAll();
+    } catch (e) { setMsg(e.message || '切换失败'); }
+  };
+
+  const checkConnection = async (uid) => {
+    setMsg(`检查账号 ${uid} 的连接...`);
+    try {
+      const r = await api(`/api/users/${encodeURIComponent(uid)}/check-connection`, 'POST');
+      setMsg(r.ok ? '连接成功' : `连接失败：${r.error || '请检查 Cookie 或网易云 API 服务'}`);
+      await refreshAll();
+    } catch (e) { setMsg(e.message || '连接检查失败'); }
+  };
+
+  const importCurrentUser = async (uid, active) => {
+    if (!active) {
+      setMsg('请先点击“使用”切换到该账号，再导入数据');
+      return;
+    }
+    setMsg(`开始导入账号 ${uid} 的网易云数据...`);
+    try {
+      await api('/api/user/import/start', 'POST', {});
+      await refreshAll();
+      setMsg('已启动导入任务');
+    } catch (e) { setMsg(e.message || '导入失败'); }
   };
 
   const saveLlm = async () => {
@@ -3436,16 +3468,19 @@ const AccountSettingsModal = ({ show, onClose, status, onSaved }) => {
     setLlm(v => ({ ...v, provider, base_url: p?.base_url || v.base_url, model: p?.model || v.model }));
   };
 
+  const connectionLabel = (status) => ({ connected: '已连接', failed: '连接失败', unknown: '未检查' }[status] || '未检查');
+  const importLabel = (status) => ({ imported: '已导入', running: '导入中', failed: '导入失败', not_imported: '未导入' }[status] || '未导入');
+
   return (
     <div className={'modal-overlay ' + (show ? 'show' : '')} onClick={e => { if (e.target.classList.contains('modal-overlay')) onClose(); }}>
       <div className="modal-box">
         <h2>本机账号与模型</h2>
         <div className="flex gap-1.5 mb-4 flex-wrap">
-          {['netease','llm','voice','users'].map(k => <button key={k} className={'btn ' + (tab === k ? 'btn-grad' : 'btn-ghost')} onClick={() => setTab(k)}>{({netease:'网易云',llm:'模型',voice:'语音',users:'用户数据'})[k]}</button>)}
+          {['netease','llm','voice','users'].map(k => <button key={k} className={'btn ' + (tab === k ? 'btn-grad' : 'btn-ghost')} onClick={() => setTab(k)}>{({netease:'网易云',llm:'模型',voice:'语音',users:'账号记录'})[k]}</button>)}
         </div>
         {tab === 'netease' && <div>
           <div className="text-xs mb-4 rounded-xl border border-emerald-300/15 bg-emerald-400/5 p-3 text-emerald-50/70 leading-relaxed">
-            当前状态：{configured ? '已配置本机账号' : '未配置账号'}。保存 UID 后会切换到该用户自己的数据目录，并自动导入喜欢、歌单和听歌记录。
+            当前状态：{configured ? '已配置本机账号' : '未配置账号'}。保存 UID 后会切换到该用户自己的数据目录，并检查 Cookie 是否可用；导入可在账号记录里手动启动。
           </div>
           <label className="flex items-center gap-2 text-sm text-emerald-50/80 mb-4">
             <input type="checkbox" checked={netease.enabled} onChange={e => setNetease(v => ({ ...v, enabled: e.target.checked }))} style={{ width: 16, height: 16 }} />
@@ -3456,8 +3491,8 @@ const AccountSettingsModal = ({ show, onClose, status, onSaved }) => {
             <input value={netease.uid} onChange={e => setNetease(v => ({ ...v, uid: e.target.value }))} placeholder="网易云 UID" />
             <textarea value={netease.cookie} onChange={e => setNetease(v => ({ ...v, cookie: e.target.value }))} placeholder={configured ? '已保存 Cookie；留空则保留原 Cookie' : '粘贴包含 MUSIC_U=... 的网易云 Cookie'} />
           </div>
-          <div className="mt-3 text-xs text-emerald-50/60">导入状态：{importStatus.state || 'idle'} {importStatus.error ? `- ${importStatus.error}` : ''}</div>
-          <button className="btn btn-grad mt-4" onClick={saveNetease}>保存并导入</button>
+          <div className="mt-3 text-xs text-emerald-50/60">连接状态：{status?.connection_status ? connectionLabel(status.connection_status) : '未检查'} · 导入状态：{importLabel(importStatus.import_status)} {importStatus.error ? `- ${importStatus.error}` : ''}</div>
+          <button className="btn btn-grad mt-4" onClick={saveNetease}>保存并检查连接</button>
         </div>}
         {tab === 'llm' && <div className="space-y-3">
           <select className="w-full p-2 rounded bg-black/40 border border-emerald-300/20 text-emerald-50" value={llm.provider} onChange={e => applyPreset(e.target.value)}>
@@ -3485,9 +3520,21 @@ const AccountSettingsModal = ({ show, onClose, status, onSaved }) => {
           <button className="btn btn-grad" onClick={saveVoice}>保存语音</button>
         </div>}
         {tab === 'users' && <div className="space-y-2">
-          {(users.users || []).map(u => <div key={u.uid} className="flex items-center justify-between rounded-lg border border-emerald-300/10 p-2 text-xs">
-            <span className="text-emerald-50/80">{u.uid}{u.active ? '（当前）' : ''} · {u.file_count || 0} 文件</span>
-            <button className="btn btn-ghost text-[10px] py-1 px-2" onClick={() => deleteUser(u.uid, u.active)}>{u.active ? '重置' : '清除'}</button>
+          {(users.users || []).map(u => <div key={u.uid} className="rounded-lg border border-emerald-300/10 p-3 text-xs">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-emerald-50/90 font-semibold truncate">{u.nickname || '网易云账号'}{u.active ? '（当前使用中）' : ''}</div>
+                <div className="text-emerald-50/55 mt-1">UID：{u.uid} · {u.file_count || 0} 文件</div>
+                <div className="text-emerald-50/60 mt-1">连接：{connectionLabel(u.connection_status)} · 导入：{importLabel(u.import_status)}</div>
+                {(u.last_error || u.last_import_error) && <div className="text-amber-100/70 mt-1 truncate">{u.last_error || u.last_import_error}</div>}
+              </div>
+              <div className="flex flex-wrap justify-end gap-1.5">
+                <button className="btn btn-ghost text-[10px] py-1 px-2" disabled={u.active} onClick={() => activateUser(u.uid)}>{u.active ? '当前' : '使用'}</button>
+                <button className="btn btn-ghost text-[10px] py-1 px-2" onClick={() => checkConnection(u.uid)}>检查连接</button>
+                <button className="btn btn-ghost text-[10px] py-1 px-2" onClick={() => importCurrentUser(u.uid, u.active)}>导入</button>
+                <button className="btn btn-ghost text-[10px] py-1 px-2" onClick={() => deleteUser(u.uid, u.active)}>{u.active ? '重置' : '清除'}</button>
+              </div>
+            </div>
           </div>)}
           {!(users.users || []).length && <div className="text-sm text-emerald-50/55">还没有本地用户数据。</div>}
         </div>}
