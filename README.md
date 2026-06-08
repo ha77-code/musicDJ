@@ -73,6 +73,29 @@ python dj_server.py
 http://127.0.0.1:8765/
 ```
 
+### 配置网易云账号
+
+首次使用网易云搜索、喜欢歌曲、歌单和听歌记录导入前，需要在页面右上角点击 `账号`，填写你自己的网易云 UID 和 Cookie。
+
+获取 Cookie 的推荐方式：
+
+1. 用 Chrome 或 Edge 打开并登录 [网易云音乐网页版](https://music.163.com/)。
+2. 按 `F12` 打开开发者工具。
+3. 进入 `Application`（Edge/Chrome 中文界面可能叫“应用程序”）。
+4. 在左侧找到 `Storage` / `Cookies`，选择 `https://music.163.com`。
+5. 找到名为 `MUSIC_U` 的 Cookie。
+6. 复制 Cookie，粘贴到 musicDJ 的账号设置里。可以只粘贴 `MUSIC_U=...`，也可以粘贴包含 `MUSIC_U=...` 的完整 Cookie 字符串。
+7. UID 可以从网易云个人主页 URL 获取，例如 `https://music.163.com/#/user/home?id=123456` 里的 `123456`。
+
+保存后检查两个状态：
+
+- 连接状态显示 `已连接`：说明 Cookie 和网易云 API 服务可用。
+- 导入状态显示 `已导入`：说明喜欢、歌单或听歌记录已经导入到当前 UID 的本地数据目录。
+
+如果连接失败，重新复制 `MUSIC_U`，确认网易云网页版仍处于登录状态，并确认本地 `NeteaseCloudMusicApiBackup` 服务正在运行。
+
+安全提醒：Cookie 等同于登录凭证，只保存在本机 `config.json`，不要提交到 GitHub 或发给别人。如果误泄露，请立即退出网页版登录或刷新登录状态。
+
 ## How To Use
 
 听歌：
