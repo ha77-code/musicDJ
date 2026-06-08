@@ -1,13 +1,14 @@
 """Runtime path helpers for development and packaged desktop runs.
 
-Development keeps using the repository root.  Packaged Tauri sidecars pass
+Development keeps using the repository root. Packaged Tauri sidecars pass
 MUSICDJ_APP_DATA and MUSICDJ_RESOURCE_DIR so writable data lives outside the
-installed application.
+installed application. MUSICDJ_APPDATA is accepted as a compatibility alias.
 """
 
 from __future__ import annotations
 
 import os
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -36,17 +37,69 @@ def resource_root() -> Path:
 
 def app_data_root() -> Path:
     env_root = _clean_env_path("MUSICDJ_APP_DATA")
+    if not env_root:
+        env_root = _clean_env_path("MUSICDJ_APPDATA")
     if env_root:
         return env_root
     return project_root()
 
 
 def packaged_mode() -> bool:
-    return bool(os.environ.get("MUSICDJ_APP_DATA"))
+    return bool(os.environ.get("MUSICDJ_APP_DATA") or os.environ.get("MUSICDJ_APPDATA"))
+
+
+def _safe_user_id(uid: str | int | None) -> str:
+    text = str(uid or "").strip()
+    return "".join(ch for ch in text if ch.isalnum() or ch in ("-", "_"))[:80]
+
+
+def _read_root_config() -> dict:
+    path = config_path()
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _write_root_config(config: dict) -> None:
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def active_user_id() -> str:
+    env_uid = _safe_user_id(os.environ.get("MUSICDJ_ACTIVE_USER_ID", ""))
+    if env_uid:
+        return env_uid
+    config = _read_root_config()
+    if "active_user_id" in config:
+        return _safe_user_id(config.get("active_user_id", ""))
+    return _safe_user_id((config.get("netease", {}) or {}).get("uid", ""))
+
+
+def set_active_user_id(uid: str) -> str:
+    safe_uid = _safe_user_id(uid)
+    config = _read_root_config()
+    config["active_user_id"] = safe_uid
+    _write_root_config(config)
+    return safe_uid
+
+
+def users_root_dir() -> Path:
+    return app_data_root() / "data" / "users"
+
+
+def user_data_dir(uid: str | int | None) -> Path:
+    safe_uid = _safe_user_id(uid)
+    if not safe_uid:
+        return app_data_root() / "data" / "_anonymous"
+    return users_root_dir() / safe_uid
 
 
 def data_dir() -> Path:
-    return app_data_root() / "data"
+    return user_data_dir(active_user_id())
 
 
 def logs_dir() -> Path:
@@ -114,6 +167,7 @@ def _copy_file_if_missing(src: Path, dst: Path) -> None:
 
 def ensure_runtime_layout() -> None:
     """Create writable runtime folders and seed minimal files when packaged."""
+    users_root_dir().mkdir(parents=True, exist_ok=True)
     for path in (
         data_dir(),
         logs_dir(),

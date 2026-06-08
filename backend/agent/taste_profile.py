@@ -3,18 +3,13 @@
 import json
 from pathlib import Path
 
-from .paths import data_dir, processed_history_dir, raw_history_dir, user_profile_dir
-
-DATA_DIR = data_dir()
-PROCESSED_DIR = processed_history_dir()
-RAW_DIR = raw_history_dir()
-USER_PROFILE_DIR = user_profile_dir()
+from . import paths
 
 
 def build_taste_profile() -> str:
     sections = []
 
-    summary = _load(PROCESSED_DIR / "training_summary.json")
+    summary = _load(paths.processed_history_dir() / "training_summary.json")
     if summary:
         tiers = summary.get("tiers", {})
         sections.append(
@@ -25,7 +20,7 @@ def build_taste_profile() -> str:
         )
 
     # Top artists
-    artists = _load(PROCESSED_DIR / "artist_stats.json")
+    artists = _load(paths.processed_history_dir() / "artist_stats.json")
     if artists:
         lines = []
         for a in artists.get("artists", [])[:10]:
@@ -33,7 +28,7 @@ def build_taste_profile() -> str:
         sections.append("### 最爱歌手\n" + "\n".join(lines))
 
     # Top songs
-    catalog = _load(PROCESSED_DIR / "training_songs_top300.json")
+    catalog = _load(paths.processed_history_dir() / "training_songs_top300.json")
     if catalog:
         songs = catalog.get("songs", [])
         lines = []
@@ -44,7 +39,7 @@ def build_taste_profile() -> str:
         sections.append("### 最爱歌曲\n（注意：次数多=喜欢这首歌，不等同喜欢这个歌手）\n" + "\n".join(lines))
 
     # Total listening
-    total = _load(RAW_DIR / "total.json")
+    total = _load(paths.raw_history_dir() / "total.json")
     if total:
         sec = total.get("data", {}).get("totalDuration", 0)
         hr = sec // 3600
@@ -106,14 +101,14 @@ def build_taste_profile_search() -> dict:
     }
 
     # Top artists from stats
-    artists = _load(PROCESSED_DIR / "artist_stats.json")
+    artists = _load(paths.processed_history_dir() / "artist_stats.json")
     if artists:
         profile["top_artists"] = [
             a["name"] for a in artists.get("artists", [])[:8]
         ]
 
     # Genres from user profile markdown + listening data
-    taste_md = USER_PROFILE_DIR / "taste.md"
+    taste_md = paths.user_profile_dir() / "taste.md"
     if taste_md.exists():
         text = taste_md.read_text(encoding="utf-8")
         # Extract genre keywords

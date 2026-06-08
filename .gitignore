@@ -6,8 +6,19 @@ data/state.db
 data/state.db-shm
 data/state.db-wal
 data/listening_stats.json
+data/personality.json
 data/playlist.json
+data/user_likes.json
 data/listening_history/
+data/.ncm_cache/
+data/voice_memos/
+data/training/*.jsonl
+data/training/*.txt
+data/test_output*
+data/taste_fixed.txt
+data/users/
+user_profile/*
+!user_profile/README.md
 logs/
 
 # Python

@@ -5,12 +5,7 @@ import random
 from datetime import datetime, date
 from pathlib import Path
 
-from .paths import data_dir, processed_history_dir, raw_history_dir, user_profile_dir
-
-DATA_DIR = data_dir()
-PROCESSED_DIR = processed_history_dir()
-RAW_DIR = raw_history_dir()
-USER_PROFILE_DIR = user_profile_dir()
+from . import paths
 
 
 class DJContext:
@@ -76,7 +71,7 @@ class DJContext:
         parts = []
         try:
             for fname, label in files.items():
-                p = USER_PROFILE_DIR / fname
+                p = paths.user_profile_dir() / fname
                 if p.exists():
                     mtime = p.stat().st_mtime
                     content = p.read_text(encoding="utf-8").strip()
@@ -159,7 +154,7 @@ class DJContext:
         summary_parts = []
 
         # Load training summary
-        summary = self._load_json(PROCESSED_DIR / "training_summary.json")
+        summary = self._load_json(paths.processed_history_dir() / "training_summary.json")
         if summary:
             summary_parts.append(f"曲库共{summary.get('total_songs', '?')}首，"
                                  f"核心歌曲{summary.get('tiers', {}).get('core', '?')}首，"
@@ -177,7 +172,7 @@ class DJContext:
             summary_parts.append("播放次数最多的歌曲（注意：次数多=喜欢这首歌，不能推断喜欢这个歌手）：\n" + "\n".join(song_lines))
 
         # Yearly listening trend
-        year_reports = self._load_json(RAW_DIR / "year_report_2025.json")
+        year_reports = self._load_json(paths.raw_history_dir() / "year_report_2025.json")
         if year_reports:
             items = year_reports.get("data", {}).get("yearItems", [])
             recent = [i for i in items if i.get("year", 0) >= 2023]
@@ -186,7 +181,7 @@ class DJContext:
                 summary_parts.append(f"近年听歌趋势：{trend}。")
 
         # Total listening
-        total_data = self._load_json(RAW_DIR / "total.json")
+        total_data = self._load_json(paths.raw_history_dir() / "total.json")
         if total_data:
             total_sec = total_data.get("data", {}).get("totalDuration", 0)
             total_hr = total_sec // 3600
@@ -199,7 +194,7 @@ class DJContext:
         if self._top_songs_cache:
             return self._top_songs_cache[:n]
 
-        songs = self._load_json(PROCESSED_DIR / "training_songs_top300.json")
+        songs = self._load_json(paths.processed_history_dir() / "training_songs_top300.json")
         if songs:
             self._top_songs_cache = songs.get("songs", [])
         else:
@@ -210,7 +205,7 @@ class DJContext:
         if self._top_artists_cache:
             return self._top_artists_cache[:n]
 
-        artists = self._load_json(PROCESSED_DIR / "artist_stats.json")
+        artists = self._load_json(paths.processed_history_dir() / "artist_stats.json")
         if artists:
             self._top_artists_cache = [
                 (a["name"], a["plays"], a["songs"])

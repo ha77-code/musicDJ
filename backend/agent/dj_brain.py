@@ -1,4 +1,4 @@
-"""Central DJ Brain — orchestrates context, LLM, actions, and memory."""
+﻿"""Central DJ Brain — orchestrates context, LLM, actions, and memory."""
 
 import json
 import random
@@ -23,7 +23,7 @@ class DJBrain:
     def __init__(self, config: dict):
         self.config = config
         self.personality = {
-            "name": config.get("dj", {}).get("name", "clauseekio"),
+            "name": config.get("dj", {}).get("name", "MusicDJ"),
             "style": config.get("dj", {}).get("style", "温暖陪伴型"),
         }
         self.llm = LLMProvider(config)

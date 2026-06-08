@@ -10,13 +10,21 @@ import json
 import random
 from datetime import datetime
 from pathlib import Path
+import sys
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-PROCESSED_DIR = DATA_DIR / "listening_history" / "processed"
-OUTPUT_DIR = DATA_DIR / "training"
+sys.path.insert(0, str(BASE_DIR / "backend"))
+from agent import paths
 
-DJ_NAME = "clauseekio"
+
+def processed_dir():
+    return paths.processed_history_dir()
+
+
+def output_dir():
+    return paths.data_dir() / "training"
+
+DJ_NAME = "MusicDJ"
 DJ_STYLE = "深夜不睡觉的野生DJ，嘴碎但走心，偶尔毒舌，经常自嘲。说话像跟老朋友连麦——会叹气会傻笑会用语气词，不端着。"
 
 # Scene variations for diversity
@@ -364,7 +372,7 @@ GENERIC_TEMPLATES = [
 INTERJECTION_TEMPLATES = [
     # Hour chime (late night)
     {
-        "rule": "整点报时", "say": "嗯…{time_str}了。说实话，这个点还在听的，clauseekio懂的。再陪你一会儿。",
+        "rule": "整点报时", "say": "嗯…{time_str}了。说实话，这个点还在听的，MusicDJ懂的。再陪你一会儿。",
         "mood": "chill", "reason": "深夜报时，温暖陪伴不唠叨"
     },
     {
@@ -438,7 +446,7 @@ INTERJECTION_TEMPLATES = [
 def load_songs():
     """Load top songs from processed training data."""
     songs = []
-    top_path = PROCESSED_DIR / "training_songs_top300.json"
+    top_path = processed_dir() / "training_songs_top300.json"
     if top_path.exists():
         with open(top_path, encoding="utf-8") as f:
             data = json.load(f)
@@ -627,11 +635,11 @@ def generate_dataset():
 
     # ── Greeting examples ──
     greetings = [
-        ("早晨好，又是新的一天。clauseekio已经上线，今天第一首歌，给你选了个温柔的。", "chill", "清晨欢迎"),
+        ("早晨好，又是新的一天。MusicDJ已经上线，今天第一首歌，给你选了个温柔的。", "chill", "清晨欢迎"),
         ("嘿，你来了。我等你半天了。今天心情怎么样？先听首歌缓缓。", "playful", "装作在等听众"),
         ("嘶…刚睡醒，嗓子还没开。但是歌已经准备好了，来，第一首。", "chill", "DJ刚睡醒，真实感"),
         ("晚上好。今天过得怎么样？不管你经历了什么，接下来的歌是你的。", "chill", "体贴的晚间问候"),
-        ("哈，这个点上线？行吧，深夜档clauseekio已就位。今晚不睡了吧？", "playful", "深夜问候，不正经"),
+        ("哈，这个点上线？行吧，深夜档MusicDJ已就位。今晚不睡了吧？", "playful", "深夜问候，不正经"),
         ("嗯…下雨天最适合窝着听歌了。来，今天第一首，跟外面的雨声配一脸。", "melancholy", "雨天专属问候"),
         ("周末！周末！周末！重要的事说三遍。今天的歌单我已经排好了，全程高能。", "energetic", "周末兴奋问候"),
     ]
@@ -653,8 +661,8 @@ def generate_dataset():
     random.shuffle(examples)
 
     # ── Write output ──
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = OUTPUT_DIR / "training_examples.jsonl"
+    output_dir().mkdir(parents=True, exist_ok=True)
+    output_path = output_dir() / "training_examples.jsonl"
     with open(output_path, "w", encoding="utf-8") as f:
         for ex in examples:
             f.write(json.dumps(ex, ensure_ascii=False) + "\n")

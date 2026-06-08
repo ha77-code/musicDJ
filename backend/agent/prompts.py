@@ -1,4 +1,4 @@
-"""DJ system prompt templates and builder functions."""
+﻿"""DJ system prompt templates and builder functions."""
 
 LANGUAGE_POLICY = """
 
@@ -136,7 +136,7 @@ def build_system_prompt(personality: dict, taste_summary: str,
                         profile_context: str = "") -> str:
     """Build the full system prompt with static+dynamic components."""
     return DJ_SYSTEM_PROMPT.format(
-        dj_name=personality.get("name", "clauseekio"),
+        dj_name=personality.get("name", "MusicDJ"),
         dj_style=personality.get("style", "温暖陪伴型"),
         profile_context=profile_context or "暂无详细画像",
         music_taste_summary=taste_summary,
@@ -198,7 +198,7 @@ DJ_GREETING_PROMPT = """你叫{dj_name}，不是AI，你是一个有血有肉的
 def build_greeting_prompt(personality: dict, state_context: str,
                           profile_context: str = "") -> str:
     return DJ_GREETING_PROMPT.format(
-        dj_name=personality.get("name", "clauseekio"),
+        dj_name=personality.get("name", "MusicDJ"),
         dj_style=personality.get("style", "温暖陪伴型"),
         profile_context=profile_context or "暂无详细画像",
         state_context=state_context,
@@ -282,7 +282,7 @@ INTERJECTION_SYSTEM_PROMPT = """你叫{dj_name}，不是AI，是一个有血有�
 
 def build_interjection_prompt(personality: dict, rule_description: str) -> str:
     return INTERJECTION_SYSTEM_PROMPT.format(
-        dj_name=personality.get("name", "clauseekio"),
+        dj_name=personality.get("name", "MusicDJ"),
         dj_style=personality.get("style", "温暖陪伴型"),
         rule_description=rule_description,
     ) + LANGUAGE_POLICY
@@ -370,7 +370,7 @@ SELECTION_SYSTEM_PROMPT = """你叫{dj_name}，不是AI，你是一个有血有�
 def build_selection_prompt(personality: dict, taste_profile: str,
                            listener_state: str = "") -> str:
     return SELECTION_SYSTEM_PROMPT.format(
-        dj_name=personality.get("name", "clauseekio"),
+        dj_name=personality.get("name", "MusicDJ"),
         dj_style=personality.get("style", "温暖陪伴型"),
         music_taste_profile=taste_profile,
         listener_state=listener_state or "无特殊状态",

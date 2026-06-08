@@ -8,9 +8,10 @@ import requests
 class LLMProvider:
     def __init__(self, config: dict):
         llm_cfg = config.get("agent", {}).get("llm", {})
+        self.provider = llm_cfg.get("provider", "deepseek")
         self.api_key = llm_cfg.get("api_key", "")
-        self.base_url = llm_cfg.get("base_url", "")
-        self.model = llm_cfg.get("model", "deepseek-chat")
+        self.base_url = llm_cfg.get("base_url") or "https://api.deepseek.com"
+        self.model = llm_cfg.get("model") or "deepseek-chat"
         self.temperature = llm_cfg.get("temperature", 0.95)
         self.max_tokens = llm_cfg.get("max_tokens", 400)
 
@@ -56,7 +57,7 @@ class LLMProvider:
                 return None
 
             return {"text": content.strip(), "model": self.model,
-                    "latency_ms": elapsed_ms, "method": "deepseek"}
+                    "latency_ms": elapsed_ms, "method": self.provider}
         except Exception:
             return None
 
@@ -82,8 +83,8 @@ class LLMProvider:
                 json={
                     "model": self.model,
                     "messages": messages,
-                    "temperature": 0.9,
-                    "max_tokens": 500,
+                    "temperature": self.temperature,
+                    "max_tokens": self.max_tokens,
                     "stream": True,
                 },
                 timeout=60,

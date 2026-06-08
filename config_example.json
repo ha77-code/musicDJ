@@ -1,90 +1,95 @@
 {
-    "app": {
-        "name": "Music DJ",
-        "version": "0.1.0",
-        "port": 8765
+  "app": {
+    "name": "Music DJ",
+    "version": "0.2.0",
+    "port": 8765
+  },
+  "active_user_id": "",
+  "users": {},
+  "dj": {
+    "name": "MusicDJ",
+    "style": "Describe the local DJ persona here.",
+    "voice": "zh-CN",
+    "pitch": 1.0,
+    "rate": 0.95
+  },
+  "weather": {
+    "api_key": "",
+    "city": "Chengdu,CN",
+    "lang": "zh_cn"
+  },
+  "netease": {
+    "enabled": false,
+    "api_host": "http://localhost:3000",
+    "cookie": "",
+    "uid": ""
+  },
+  "player": {
+    "transition_lead_seconds": 12,
+    "crossfade_ms": 2000
+  },
+  "tts": {
+    "provider": "browser",
+    "volcano": {
+      "app_id": "",
+      "token": "",
+      "voice_type": "BV700_V2_streaming",
+      "resource_id": "volc.tts.default",
+      "encoding": "mp3",
+      "speed_ratio": 0.95,
+      "volume_ratio": 1.0,
+      "pitch_ratio": 1.0,
+      "ssml_enabled": true,
+      "ssml_mood_config": {
+        "energetic": {"pitch": "+8%", "rate": "+15%", "volume": "+20%"},
+        "melancholy": {"pitch": "-6%", "rate": "-10%", "volume": "-10%"},
+        "chill": {"pitch": "-3%", "rate": "-5%", "volume": "0%"},
+        "playful": {"pitch": "+5%", "rate": "+8%", "volume": "+10%"},
+        "nostalgic": {"pitch": "-4%", "rate": "-8%", "volume": "-5%"},
+        "warm": {"pitch": "-2%", "rate": "-3%", "volume": "+5%"},
+        "dark": {"pitch": "-8%", "rate": "-12%", "volume": "-8%"}
+      },
+      "mood_params": {
+        "energetic": {"speed_ratio": 1.1, "pitch_ratio": 1.05},
+        "melancholy": {"speed_ratio": 0.85, "pitch_ratio": 0.9},
+        "chill": {"speed_ratio": 0.95, "pitch_ratio": 1.0},
+        "warm": {"speed_ratio": 0.9, "pitch_ratio": 1.0},
+        "dark": {"speed_ratio": 0.88, "pitch_ratio": 0.92}
+      }
     },
-    "dj": {
-        "name": "clauseekio",
-        "style": "你的 DJ 人设描述，例如：深夜不睡觉的野生DJ，嘴碎但走心，偶尔毒舌，经常自嘲。说话像跟老朋友连麦。",
-        "voice": "zh-CN",
-        "pitch": 1.0,
-        "rate": 0.95
-    },
-    "weather": {
-        "api_key": "你的 OpenWeatherMap API Key（可选，不填也能用）",
-        "city": "Chengdu,CN",
-        "lang": "zh_cn"
-    },
-    "netease": {
-        "enabled": true,
-        "api_host": "http://localhost:3000",
-        "cookie": "你的网易云音乐 Cookie（浏览器 F12 → Application → Cookies → MUSIC_U）",
-        "uid": "你的网易云 UID"
-    },
-    "player": {
-        "transition_lead_seconds": 12,
-        "crossfade_ms": 2000
-    },
-    "tts": {
-        "provider": "volcano",
-        "app_id": "你的火山引擎 TTS AppID",
-        "token": "你的火山引擎 TTS Token",
-        "voice_type": "BV700_V2_streaming",
-        "resource_id": "volc.tts.default",
-        "encoding": "mp3",
-        "speed_ratio": 0.95,
-        "volume_ratio": 1.0,
-        "pitch_ratio": 1.0,
-        "ssml_enabled": true,
-        "ssml_mood_config": {
-            "energetic": {"pitch": "+8%", "rate": "+15%", "volume": "+20%"},
-            "melancholy": {"pitch": "-6%", "rate": "-10%", "volume": "-10%"},
-            "chill": {"pitch": "-3%", "rate": "-5%", "volume": "0%"},
-            "playful": {"pitch": "+5%", "rate": "+8%", "volume": "+10%"},
-            "nostalgic": {"pitch": "-4%", "rate": "-8%", "volume": "-5%"},
-            "warm": {"pitch": "-2%", "rate": "-3%", "volume": "+5%"},
-            "dark": {"pitch": "-8%", "rate": "-12%", "volume": "-8%"}
-        },
-        "streaming_enabled": true,
-        "realtime_voice": {
-            "enabled": true,
-            "model": "O2.0",
-            "ws_url": "wss://openspeech.bytedance.com/api/v3/realtime/dialogue",
-            "speech_rate": 0,
-            "loudness_rate": 0,
-            "use_for_chat": true
-        },
-        "mood_params": {
-            "energetic": {"speed_ratio": 1.10, "pitch_ratio": 1.05},
-            "melancholy": {"speed_ratio": 0.85, "pitch_ratio": 0.90},
-            "chill": {"speed_ratio": 0.95, "pitch_ratio": 1.0},
-            "warm": {"speed_ratio": 0.90, "pitch_ratio": 1.0},
-            "dark": {"speed_ratio": 0.88, "pitch_ratio": 0.92}
-        }
-    },
-    "agent": {
-        "pool_size": 15,
-        "discovery_ratio": 0.85,
-        "llm": {
-            "api_key": "你的 DeepSeek API Key（platform.deepseek.com → API Keys）",
-            "base_url": "https://api.deepseek.com",
-            "model": "deepseek-chat",
-            "temperature": 1.05,
-            "max_tokens": 500
-        }
-    },
-    "scheduler": {
-        "enabled": true,
-        "check_interval_seconds": 30,
-        "global_cooldown_minutes": 2,
-        "rules": {
-            "hour_chime": {"enabled": true, "cooldown": 55},
-            "weather_change": {"enabled": true, "cooldown": 30},
-            "artist_streak": {"enabled": true, "threshold": 4, "cooldown": 15},
-            "listening_duration": {"enabled": true, "milestones": [30, 60, 90, 120], "cooldown": 40},
-            "song_count": {"enabled": true, "every_n": 8, "cooldown": 20},
-            "mood_shift": {"enabled": true, "cooldown": 15}
-        }
+    "streaming_enabled": true,
+    "realtime_voice": {
+      "enabled": false,
+      "model": "O2.0",
+      "ws_url": "wss://openspeech.bytedance.com/api/v3/realtime/dialogue",
+      "speech_rate": 0,
+      "loudness_rate": 0,
+      "use_for_chat": false
     }
+  },
+  "agent": {
+    "pool_size": 15,
+    "discovery_ratio": 0.85,
+    "llm": {
+      "provider": "deepseek",
+      "api_key": "",
+      "base_url": "https://api.deepseek.com",
+      "model": "deepseek-chat",
+      "temperature": 1.05,
+      "max_tokens": 500
+    }
+  },
+  "scheduler": {
+    "enabled": true,
+    "check_interval_seconds": 30,
+    "global_cooldown_minutes": 2,
+    "rules": {
+      "hour_chime": {"enabled": true, "cooldown": 55},
+      "weather_change": {"enabled": true, "cooldown": 30},
+      "artist_streak": {"enabled": true, "threshold": 4, "cooldown": 15},
+      "listening_duration": {"enabled": true, "milestones": [30, 60, 90, 120], "cooldown": 40},
+      "song_count": {"enabled": true, "every_n": 8, "cooldown": 20},
+      "mood_shift": {"enabled": true, "cooldown": 15}
+    }
+  }
 }

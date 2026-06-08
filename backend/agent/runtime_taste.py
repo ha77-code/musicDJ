@@ -5,11 +5,7 @@ import json
 import math
 from datetime import datetime, timedelta, timezone
 
-from .paths import data_dir, processed_history_dir, stats_path
-
-DATA_DIR = data_dir()
-PROCESSED_DIR = processed_history_dir()
-STATS_PATH = stats_path()
+from . import paths
 
 
 class RuntimeTasteScorer:
@@ -207,8 +203,9 @@ class RuntimeTasteScorer:
     def _load_stats(self):
         self._stats = {}
         try:
-            if STATS_PATH.exists():
-                with open(STATS_PATH, encoding="utf-8") as f:
+            stats_path = paths.stats_path()
+            if stats_path.exists():
+                with open(stats_path, encoding="utf-8") as f:
                     data = json.load(f)
                 for k, v in data.get("song_plays", {}).items():
                     self._stats[k] = {"count": v.get("count", 0),
@@ -226,7 +223,7 @@ class RuntimeTasteScorer:
         self._catalog = []
         self._catalog_by_id = {}
         try:
-            path = PROCESSED_DIR / "training_songs_top300.json"
+            path = paths.processed_history_dir() / "training_songs_top300.json"
             if path.exists():
                 with open(path, encoding="utf-8") as f:
                     data = json.load(f)

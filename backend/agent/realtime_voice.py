@@ -35,12 +35,13 @@ class RealtimeVoiceClient:
 
     def __init__(self, config: dict):
         tts_cfg = config.get("tts", {})
+        volcano_cfg = tts_cfg.get("volcano", tts_cfg)
         rt_cfg = tts_cfg.get("realtime_voice", {})
 
-        self.app_id = tts_cfg.get("app_id", "")
-        self.token = tts_cfg.get("token", "")
-        self.voice_type = tts_cfg.get("voice_type", "BV700_V2_streaming")
-        self.encoding = tts_cfg.get("encoding", "mp3")
+        self.app_id = volcano_cfg.get("app_id", "")
+        self.token = volcano_cfg.get("token", "")
+        self.voice_type = volcano_cfg.get("voice_type", "BV700_V2_streaming")
+        self.encoding = volcano_cfg.get("encoding", "mp3")
 
         self.enabled = rt_cfg.get("enabled", True)
         self.ws_url = rt_cfg.get(

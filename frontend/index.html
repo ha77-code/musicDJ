@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>AI DJ - clauseekio</title>
+<title>Music DJ</title>
 <style>
   :root {
     --bg-0: #010804;
@@ -175,7 +175,8 @@
     letter-spacing: 0.02em;
   }
 
-  .modal-box input {
+  .modal-box input,
+  .modal-box textarea {
     width: 100%;
     padding: 10px 14px;
     border-radius: 10px;
@@ -186,7 +187,14 @@
     outline: none;
   }
 
-  .modal-box input:focus { border-color: rgba(74, 222, 128, 0.58); }
+  .modal-box textarea {
+    min-height: 92px;
+    resize: vertical;
+    line-height: 1.45;
+  }
+
+  .modal-box input:focus,
+  .modal-box textarea:focus { border-color: rgba(74, 222, 128, 0.58); }
 
   .btn {
     padding: 8px 18px;
@@ -2559,7 +2567,7 @@ const BackgroundEffects = React.memo(() => {
 });
 
 // ── Top Navigation ──
-const TopNav = ({ state, onToggleMode, onTogglePlaylist, playlistOpen, onSearch }) => {
+const TopNav = ({ state, onToggleMode, onTogglePlaylist, playlistOpen, onSearch, onAccount, accountStatus }) => {
   const [clock, setClock] = useState('');
   useEffect(() => {
     const tk = () => setClock(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
@@ -2572,13 +2580,16 @@ const TopNav = ({ state, onToggleMode, onTogglePlaylist, playlistOpen, onSearch 
       <div className="flex items-center gap-3 sm:gap-5 min-w-0">
         <div className="text-[15px] font-black tracking-[-0.03em] flex items-center gap-2 text-emerald-50 min-w-0">
           <span className="w-[8px] h-[8px] rounded-full inline-block" style={{ background: state.stageAccent, boxShadow: `0 0 14px rgba(${hexToRgb(state.stageAccent || STAGE_ACCENT_DEFAULT).r},${hexToRgb(state.stageAccent || STAGE_ACCENT_DEFAULT).g},${hexToRgb(state.stageAccent || STAGE_ACCENT_DEFAULT).b},0.8)` }}></span>
-          <span className="truncate">clauseekio</span>
+          <span className="truncate">MusicDJ</span>
         </div>
         <button onClick={onTogglePlaylist} className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${playlistOpen ? 'text-emerald-200 bg-emerald-400/12 border border-emerald-300/25' : 'text-emerald-50/58 hover:text-emerald-50 bg-white/[0.03] border border-white/[0.06]'}`}>
           歌单
         </button>
         <button onClick={onSearch} className="hidden sm:inline-flex px-3 py-1.5 rounded-full text-xs font-bold text-emerald-50/58 hover:text-emerald-50 bg-white/[0.03] border border-white/[0.06] transition-all">
           搜索
+        </button>
+        <button onClick={onAccount} className={`inline-flex px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${accountStatus?.configured ? 'text-emerald-200 bg-emerald-400/10 border-emerald-300/20' : 'text-amber-100/80 bg-amber-400/10 border-amber-300/20'}`}>
+          账号
         </button>
       </div>
       <div className="flex items-center gap-2 sm:gap-4">
@@ -2808,7 +2819,7 @@ const MusicStage = ({ state, dispatch, audioActions, viz, isDjTalking, lyricProg
             {cover ? <img src={cover + (cover.includes('?') ? '' : '?param=80y80')} alt="" onError={e => e.currentTarget.style.display = 'none'} /> : 'DJ'}
           </div>
           <div className="min-w-0">
-            <div className="station-name">clauseekio</div>
+            <div className="station-name">MusicDJ</div>
             <div className="station-status">
               <span className={'status-dot ' + (talking ? 'talking' : '')}></span>
               <span>{talking ? 'ON AIR' : state.isPlaying ? 'PLAYING' : 'READY'}</span>
@@ -3337,6 +3348,158 @@ const LikesModal = ({ show, onClose, onRefresh, playlistSongs }) => {
   );
 };
 
+const AccountSettingsModal = ({ show, onClose, status, onSaved }) => {
+  const [tab, setTab] = useState('netease');
+  const [msg, setMsg] = useState('');
+  const [netease, setNetease] = useState({ enabled: false, api_host: 'http://localhost:3000', uid: '', cookie: '' });
+  const [llm, setLlm] = useState({ presets: [], provider: 'deepseek', base_url: 'https://api.deepseek.com', model: 'deepseek-chat', api_key: '', temperature: 1.05, max_tokens: 500 });
+  const [voice, setVoice] = useState({ providers: [], provider: 'browser', app_id: '', token: '', voice_type: 'BV700_V2_streaming', resource_id: 'volc.tts.default', encoding: 'mp3' });
+  const [users, setUsers] = useState({ active_user_id: '', users: [] });
+  const [importStatus, setImportStatus] = useState({ state: 'idle' });
+  const configured = !!status?.configured;
+
+  const refreshAll = useCallback(async () => {
+    try {
+      const n = await api('/api/local-account/netease');
+      setNetease(v => ({ ...v, enabled: !!n.enabled, api_host: n.api_host || 'http://localhost:3000', uid: n.uid || '', cookie: '' }));
+      onSaved && onSaved(n);
+    } catch (e) {}
+    try {
+      const l = await api('/api/local-account/llm');
+      setLlm(v => ({ ...v, ...l, api_key: '' }));
+    } catch (e) {}
+    try {
+      const vc = await api('/api/local-account/voice');
+      setVoice(v => ({ ...v, providers: vc.providers || [], provider: vc.provider || 'browser', voice_type: vc.volcano?.voice_type || 'BV700_V2_streaming', resource_id: vc.volcano?.resource_id || 'volc.tts.default', encoding: vc.volcano?.encoding || 'mp3', app_id: '', token: '' }));
+    } catch (e) {}
+    try { setUsers(await api('/api/users')); } catch (e) {}
+    try { setImportStatus(await api('/api/user/import/status')); } catch (e) {}
+  }, [onSaved]);
+
+  useEffect(() => {
+    if (!show) return;
+    setMsg('');
+    refreshAll();
+  }, [show, refreshAll]);
+
+  useEffect(() => {
+    if (!show) return;
+    const t = setInterval(() => api('/api/user/import/status').then(setImportStatus).catch(() => {}), 2500);
+    return () => clearInterval(t);
+  }, [show]);
+
+  const saveNetease = async () => {
+    setMsg('保存网易云账号...');
+    try {
+      const payload = { enabled: netease.enabled, api_host: netease.api_host, uid: netease.uid, auto_import: true };
+      if (netease.cookie.trim()) payload.cookie = netease.cookie.trim();
+      const r = await api('/api/local-account/netease', 'POST', payload);
+      onSaved && onSaved(r.netease);
+      setMsg('已保存，并已启动当前账号的数据导入');
+      await refreshAll();
+    } catch (e) { setMsg(e.message || '保存失败'); }
+  };
+
+  const saveLlm = async () => {
+    setMsg('保存模型配置...');
+    try {
+      const payload = { provider: llm.provider, base_url: llm.base_url, model: llm.model, temperature: Number(llm.temperature), max_tokens: Number(llm.max_tokens) };
+      if (llm.api_key.trim()) payload.api_key = llm.api_key.trim();
+      await api('/api/local-account/llm', 'POST', payload);
+      setMsg('模型配置已保存到当前用户');
+      await refreshAll();
+    } catch (e) { setMsg(e.message || '保存失败'); }
+  };
+
+  const saveVoice = async () => {
+    setMsg('保存语音配置...');
+    try {
+      const payload = { provider: voice.provider, voice_type: voice.voice_type, resource_id: voice.resource_id, encoding: voice.encoding };
+      if (voice.app_id.trim()) payload.app_id = voice.app_id.trim();
+      if (voice.token.trim()) payload.token = voice.token.trim();
+      await api('/api/local-account/voice', 'POST', payload);
+      setMsg('语音配置已保存到当前用户');
+      await refreshAll();
+    } catch (e) { setMsg(e.message || '保存失败'); }
+  };
+
+  const deleteUser = async (uid, active) => {
+    const suffix = active ? '?reset_current=true' : '';
+    if (!confirm(active ? `重置当前账号 ${uid} 的本地数据？` : `清除旧账号 ${uid} 的本地数据？`)) return;
+    await api(`/api/users/${encodeURIComponent(uid)}/data${suffix}`, 'DELETE');
+    setMsg(active ? '当前账号数据已重置' : '旧账号数据已清除');
+    await refreshAll();
+  };
+
+  const applyPreset = (provider) => {
+    const p = (llm.presets || []).find(x => x.id === provider);
+    setLlm(v => ({ ...v, provider, base_url: p?.base_url || v.base_url, model: p?.model || v.model }));
+  };
+
+  return (
+    <div className={'modal-overlay ' + (show ? 'show' : '')} onClick={e => { if (e.target.classList.contains('modal-overlay')) onClose(); }}>
+      <div className="modal-box">
+        <h2>本机账号与模型</h2>
+        <div className="flex gap-1.5 mb-4 flex-wrap">
+          {['netease','llm','voice','users'].map(k => <button key={k} className={'btn ' + (tab === k ? 'btn-grad' : 'btn-ghost')} onClick={() => setTab(k)}>{({netease:'网易云',llm:'模型',voice:'语音',users:'用户数据'})[k]}</button>)}
+        </div>
+        {tab === 'netease' && <div>
+          <div className="text-xs mb-4 rounded-xl border border-emerald-300/15 bg-emerald-400/5 p-3 text-emerald-50/70 leading-relaxed">
+            当前状态：{configured ? '已配置本机账号' : '未配置账号'}。保存 UID 后会切换到该用户自己的数据目录，并自动导入喜欢、歌单和听歌记录。
+          </div>
+          <label className="flex items-center gap-2 text-sm text-emerald-50/80 mb-4">
+            <input type="checkbox" checked={netease.enabled} onChange={e => setNetease(v => ({ ...v, enabled: e.target.checked }))} style={{ width: 16, height: 16 }} />
+            启用网易云搜索、歌单、喜欢和播放
+          </label>
+          <div className="space-y-3">
+            <input value={netease.api_host} onChange={e => setNetease(v => ({ ...v, api_host: e.target.value }))} placeholder="http://localhost:3000" />
+            <input value={netease.uid} onChange={e => setNetease(v => ({ ...v, uid: e.target.value }))} placeholder="网易云 UID" />
+            <textarea value={netease.cookie} onChange={e => setNetease(v => ({ ...v, cookie: e.target.value }))} placeholder={configured ? '已保存 Cookie；留空则保留原 Cookie' : '粘贴包含 MUSIC_U=... 的网易云 Cookie'} />
+          </div>
+          <div className="mt-3 text-xs text-emerald-50/60">导入状态：{importStatus.state || 'idle'} {importStatus.error ? `- ${importStatus.error}` : ''}</div>
+          <button className="btn btn-grad mt-4" onClick={saveNetease}>保存并导入</button>
+        </div>}
+        {tab === 'llm' && <div className="space-y-3">
+          <select className="w-full p-2 rounded bg-black/40 border border-emerald-300/20 text-emerald-50" value={llm.provider} onChange={e => applyPreset(e.target.value)}>
+            {(llm.presets || []).map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+          <input value={llm.base_url} onChange={e => setLlm(v => ({ ...v, base_url: e.target.value }))} placeholder="OpenAI-compatible base_url" />
+          <input value={llm.model} onChange={e => setLlm(v => ({ ...v, model: e.target.value }))} placeholder="model" />
+          <input value={llm.api_key} onChange={e => setLlm(v => ({ ...v, api_key: e.target.value }))} placeholder={llm.configured ? '已保存 API Key；留空则保留' : 'API Key'} />
+          <div className="grid grid-cols-2 gap-2">
+            <input type="number" step="0.01" value={llm.temperature} onChange={e => setLlm(v => ({ ...v, temperature: e.target.value }))} />
+            <input type="number" value={llm.max_tokens} onChange={e => setLlm(v => ({ ...v, max_tokens: e.target.value }))} />
+          </div>
+          <button className="btn btn-grad" onClick={saveLlm}>保存模型</button>
+        </div>}
+        {tab === 'voice' && <div className="space-y-3">
+          <select className="w-full p-2 rounded bg-black/40 border border-emerald-300/20 text-emerald-50" value={voice.provider} onChange={e => setVoice(v => ({ ...v, provider: e.target.value }))}>
+            {(voice.providers || []).map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+          {voice.provider === 'volcano' && <>
+            <input value={voice.app_id} onChange={e => setVoice(v => ({ ...v, app_id: e.target.value }))} placeholder="火山 App ID；留空保留" />
+            <input value={voice.token} onChange={e => setVoice(v => ({ ...v, token: e.target.value }))} placeholder="火山 Token；留空保留" />
+            <input value={voice.voice_type} onChange={e => setVoice(v => ({ ...v, voice_type: e.target.value }))} placeholder="voice_type" />
+            <input value={voice.resource_id} onChange={e => setVoice(v => ({ ...v, resource_id: e.target.value }))} placeholder="resource_id" />
+          </>}
+          <button className="btn btn-grad" onClick={saveVoice}>保存语音</button>
+        </div>}
+        {tab === 'users' && <div className="space-y-2">
+          {(users.users || []).map(u => <div key={u.uid} className="flex items-center justify-between rounded-lg border border-emerald-300/10 p-2 text-xs">
+            <span className="text-emerald-50/80">{u.uid}{u.active ? '（当前）' : ''} · {u.file_count || 0} 文件</span>
+            <button className="btn btn-ghost text-[10px] py-1 px-2" onClick={() => deleteUser(u.uid, u.active)}>{u.active ? '重置' : '清除'}</button>
+          </div>)}
+          {!(users.users || []).length && <div className="text-sm text-emerald-50/55">还没有本地用户数据。</div>}
+        </div>}
+        {msg && <div className="mt-3 text-xs text-emerald-100/70">{msg}</div>}
+        <div className="flex justify-end gap-2 mt-5">
+          <button className="btn btn-ghost" onClick={onClose}>关闭</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Playlist Slide Panel ──
 const PlaylistSlide = ({ open, songs, currentIndex, onPlay, onDelete, onClose, onImport, onSearch, onImportPlaylist, onLikes }) => {
   return (
@@ -3376,7 +3539,8 @@ function App() {
   stateRef.current = state;
   const audioActionsRef = useRef(null);
   const [playlistOpen, setPlaylistOpen] = useState(false);
-  const [modal, setModal] = useState({ import: false, search: false, playlist: false, likes: false });
+  const [modal, setModal] = useState({ import: false, search: false, playlist: false, likes: false, account: false });
+  const [accountStatus, setAccountStatus] = useState(null);
   const [searchInitKw, setSearchInitKw] = useState('');
   const [recCards, setRecCards] = useState([]);
   const [djScriptFeed, setDjScriptFeed] = useState([]);
@@ -3557,7 +3721,7 @@ function App() {
     togglePlaylist: () => setPlaylistOpen(o => !o),
     showSearch: () => setModal(m => ({ ...m, search: true })),
     showImport: () => setModal(m => ({ ...m, import: true })),
-    closeAll: () => { setPlaylistOpen(false); setModal({ import: false, search: false, playlist: false, likes: false }); },
+    closeAll: () => { setPlaylistOpen(false); setModal({ import: false, search: false, playlist: false, likes: false, account: false }); },
   }), [audioActions, cancelTransitionFallback, state.openingBlocked, state.needsUserAction, state.pendingSong, state.currentMode]);
 
   const loadMaterializedSong = useCallback((song, idx = -1) => {
@@ -3839,6 +4003,7 @@ function App() {
   useEffect(() => {
     (async () => {
       try { const s = await api('/api/status'); } catch (e) {}
+      try { const account = await api('/api/local-account/netease'); setAccountStatus(account); } catch (e) {}
       try { const pl = await api('/api/playlist'); dispatch({ type: 'SET_PLAYLIST', payload: pl }); } catch (e) {}
       const saved = localStorage.getItem('dj_activity') || '';
       if (saved) dispatch({ type: 'SET_USER_ACTIVITY', payload: saved });
@@ -4278,7 +4443,7 @@ executeActionsRef.current = executeActions;
     showImport: () => setModal(m => ({ ...m, import: true })),
     showNeteaseSearch: () => setModal(m => ({ ...m, search: true })),
     togglePlaylist: () => setPlaylistOpen(o => !o),
-    closeAll: () => { setPlaylistOpen(false); setModal({ import: false, search: false, playlist: false, likes: false }); },
+    closeAll: () => { setPlaylistOpen(false); setModal({ import: false, search: false, playlist: false, likes: false, account: false }); },
   }), [uiAudioActions]);
   useKeyboardShortcuts(kbActions);
 
@@ -4332,7 +4497,9 @@ executeActionsRef.current = executeActions;
 
       <TopNav state={state} onToggleMode={toggleMode}
         onTogglePlaylist={() => setPlaylistOpen(o => !o)} playlistOpen={playlistOpen}
-        onSearch={() => setModal(m => ({ ...m, search: true }))} />
+        onSearch={() => setModal(m => ({ ...m, search: true }))}
+        onAccount={() => setModal(m => ({ ...m, account: true }))}
+        accountStatus={accountStatus} />
 
       {/* DJ View */}
       <div className="dj-broadcast-view">
@@ -4366,6 +4533,7 @@ executeActionsRef.current = executeActions;
       <NeteaseSearchModal show={modal.search} onClose={() => { setModal(m => ({ ...m, search: false })); setSearchInitKw(''); }} onPlayDirect={playDirectSong} onRefresh={refreshPlaylist} playlistSongs={state.playlist.songs} initKw={searchInitKw} />
       <PlaylistImportModal show={modal.playlist} onClose={() => setModal(m => ({ ...m, playlist: false }))} onRefresh={refreshPlaylist} playlistSongs={state.playlist.songs} />
       <LikesModal show={modal.likes} onClose={() => setModal(m => ({ ...m, likes: false }))} onRefresh={refreshPlaylist} playlistSongs={state.playlist.songs} />
+      <AccountSettingsModal show={modal.account} onClose={() => setModal(m => ({ ...m, account: false }))} status={accountStatus} onSaved={setAccountStatus} />
     </div>
   );
 }

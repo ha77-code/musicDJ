@@ -25,29 +25,31 @@ DEFAULT_SSML_MOOD_CONFIG = {
 class TTSProvider:
     def __init__(self, config: dict):
         tts_cfg = config.get("tts", {})
-        self.app_id = tts_cfg.get("app_id", "")
-        self.token = tts_cfg.get("token", "")
-        self.voice_type = tts_cfg.get("voice_type", "BV700_V2_streaming")
-        self.resource_id = tts_cfg.get("resource_id", "volc.tts.default")
-        self.encoding = tts_cfg.get("encoding", "mp3")
-        self.speed_ratio = tts_cfg.get("speed_ratio", 0.95)
-        self.volume_ratio = tts_cfg.get("volume_ratio", 1.0)
-        self.pitch_ratio = tts_cfg.get("pitch_ratio", 1.0)
+        self.provider = tts_cfg.get("provider", "browser")
+        volcano_cfg = tts_cfg.get("volcano", tts_cfg)
+        self.app_id = volcano_cfg.get("app_id", "")
+        self.token = volcano_cfg.get("token", "")
+        self.voice_type = volcano_cfg.get("voice_type", "BV700_V2_streaming")
+        self.resource_id = volcano_cfg.get("resource_id", "volc.tts.default")
+        self.encoding = volcano_cfg.get("encoding", "mp3")
+        self.speed_ratio = volcano_cfg.get("speed_ratio", 0.95)
+        self.volume_ratio = volcano_cfg.get("volume_ratio", 1.0)
+        self.pitch_ratio = volcano_cfg.get("pitch_ratio", 1.0)
         self._api_url = "https://openspeech.bytedance.com/api/v1/tts"
 
         # SSML config
-        self.ssml_enabled = tts_cfg.get("ssml_enabled", True)
-        mood_params = tts_cfg.get("mood_params", {})
+        self.ssml_enabled = volcano_cfg.get("ssml_enabled", tts_cfg.get("ssml_enabled", True))
+        mood_params = volcano_cfg.get("mood_params", tts_cfg.get("mood_params", {}))
         # Legacy plain-text mood map, always initialize to avoid attribute errors.
         self.mood_params = mood_params if isinstance(mood_params, dict) else {}
-        self.ssml_mood_config = tts_cfg.get("ssml_mood_config", DEFAULT_SSML_MOOD_CONFIG)
+        self.ssml_mood_config = volcano_cfg.get("ssml_mood_config", tts_cfg.get("ssml_mood_config", DEFAULT_SSML_MOOD_CONFIG))
 
     # ── Public API ─────────────────────────────────────
 
     def synthesize(self, text: str, mood: str = "chill",
                    force_plain: bool = False) -> bytes | None:
         """Convert text to speech, returns audio bytes (mp3)."""
-        if not self.app_id or not self.token or not text:
+        if self.provider != "volcano" or not self.app_id or not self.token or not text:
             return None
 
         text = self._clean_text(text)
@@ -164,7 +166,7 @@ class TTSProvider:
         """
         import threading
 
-        if not self.app_id or not self.token or not text:
+        if self.provider != "volcano" or not self.app_id or not self.token or not text:
             if callback:
                 callback(b"__END__")
             return
@@ -277,7 +279,7 @@ class TTSProvider:
         return groups
 
     def check_available(self) -> bool:
-        return bool(self.app_id and self.token)
+        return self.provider == "volcano" and bool(self.app_id and self.token)
 
     # ── SSML Builder ───────────────────────────────────
 

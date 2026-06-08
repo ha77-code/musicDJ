@@ -1,4 +1,4 @@
-# Music DJ — clauseekio
+﻿# Music DJ
 
 MusicDJ 是一个自用 AI 电台 DJ agent。它不是普通播放器：打开页面后，DJ 会尝试主动开台、聊天、推歌、说自然串词，并根据你的历史口味和当前状态做电台式随机选歌。
 
@@ -105,7 +105,7 @@ http://127.0.0.1:8765/
 {
   "app": { "port": 8765 },
   "dj": {
-    "name": "clauseekio",
+    "name": "MusicDJ",
     "style": "嘴碎但走心的深夜DJ"
   },
   "agent": {
@@ -207,6 +207,16 @@ musicDJ/
 - `data/playlist.json`、`data/state.db`、`data/listening_stats.json` 是个人数据，不要随意删除。
 - `.gitignore` 已覆盖部分运行时文件，但已经被 Git 跟踪过的文件仍可能出现在 `git status`。
 - 网易云发现依赖本地 `NeteaseCloudMusicApi` 服务和可用 Cookie。
+
+## Public Release Safety
+
+- Public builds must not include your personal `config.json`.
+- The packaged app only ships `config_example.json`; each user should open the top `账号` button and save their own NetEase Cloud Music Cookie/UID, model key, and voice settings locally.
+- `config_example.json` keeps `netease.enabled` as `false` by default, with empty `cookie`, `uid`, LLM key, and Volcano token.
+- Runtime data is isolated by NetEase UID under `data/users/<uid>/`; switching accounts does not reuse the previous user's playlist, memory, listening stats, or training profile.
+- The account settings UI lets users clear old local account data explicitly. Old account data is not deleted automatically.
+- `/api/config` returns only a redacted configuration summary in normal runs. Full config writes are available only when `MUSICDJ_DEBUG` is set.
+- Account-backed NetEase routes now reject requests until the local user enables NetEase and provides a real `MUSIC_U` cookie.
 
 ## Troubleshooting
 

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Music DJ - 单文件 Python 后端
 轻量、本地、人格可养成的智能音乐 DJ
 """
@@ -9,14 +9,20 @@ import time
 import base64
 import hashlib
 import logging
+import shutil
+import sys
+import threading
+import gc
 from datetime import datetime
 from pathlib import Path
 
 import requests
 from flask import Flask, jsonify, request, send_from_directory, send_file, Response, redirect
 
+import collect_listening_data
 from agent.dj_brain import DJBrain
 from agent import paths
+from agent.music_discovery import MusicDiscovery
 from agent.realtime_voice import RealtimeVoiceClient
 from agent.scheduler import DJScheduler
 from agent.tts_provider import TTSProvider
@@ -92,15 +98,25 @@ def _clean_action_tags(text: str) -> str:
 paths.ensure_runtime_layout()
 
 BASE_DIR = paths.resource_root()
-DATA_DIR = paths.data_dir()
 CONFIG_PATH = paths.config_path()
+FRONTEND_DIR = paths.frontend_dir()
+LOGS_DIR = paths.logs_dir()
+DATA_DIR = paths.data_dir()
 PLAYLIST_PATH = paths.playlist_path()
 PERSONALITY_PATH = paths.personality_path()
 VOICE_MEMOS_DIR = paths.voice_memos_dir()
-FRONTEND_DIR = paths.frontend_dir()
 STATS_PATH = paths.stats_path()
 LIKES_PATH = paths.likes_path()
-LOGS_DIR = paths.logs_dir()
+
+
+def refresh_path_globals():
+    global DATA_DIR, PLAYLIST_PATH, PERSONALITY_PATH, VOICE_MEMOS_DIR, STATS_PATH, LIKES_PATH
+    DATA_DIR = paths.data_dir()
+    PLAYLIST_PATH = paths.playlist_path()
+    PERSONALITY_PATH = paths.personality_path()
+    VOICE_MEMOS_DIR = paths.voice_memos_dir()
+    STATS_PATH = paths.stats_path()
+    LIKES_PATH = paths.likes_path()
 
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
@@ -112,6 +128,27 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("musicdj.backend")
+APP_VERSION = "0.2.0"
+IMPORT_STATUS = {
+    "state": "idle",
+    "uid": "",
+    "started_at": "",
+    "finished_at": "",
+    "error": "",
+    "output_tail": "",
+}
+LLM_PRESETS = [
+    {"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deepseek.com", "model": "deepseek-chat"},
+    {"id": "openai", "label": "OpenAI", "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini"},
+    {"id": "qwen", "label": "通义千问", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen-plus"},
+    {"id": "zhipu", "label": "智谱 GLM", "base_url": "https://open.bigmodel.cn/api/paas/v4", "model": "glm-4-flash"},
+    {"id": "moonshot", "label": "Moonshot", "base_url": "https://api.moonshot.cn/v1", "model": "moonshot-v1-8k"},
+    {"id": "custom", "label": "自定义 OpenAI-compatible", "base_url": "", "model": ""},
+]
+VOICE_PROVIDERS = [
+    {"id": "browser", "label": "浏览器本地语音"},
+    {"id": "volcano", "label": "火山引擎 TTS"},
+]
 
 # ── App ────────────────────────────────────────────────
 app = Flask(__name__, static_folder=str(FRONTEND_DIR), static_url_path="")
@@ -133,15 +170,207 @@ def save_json(path, data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+def _merge_dict(base: dict, override: dict) -> dict:
+    merged = json.loads(json.dumps(base or {}))
+    for key, value in (override or {}).items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _merge_dict(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _root_config() -> dict:
+    return load_json(CONFIG_PATH, {})
+
+
+def _save_root_config(config: dict) -> None:
+    save_json(CONFIG_PATH, config)
+
+
+def _active_user_config(root: dict | None = None) -> tuple[str, dict]:
+    root = root if root is not None else _root_config()
+    uid = paths.active_user_id()
+    user_cfg = (root.get("users", {}) or {}).get(uid, {}) if uid else {}
+    return uid, user_cfg if isinstance(user_cfg, dict) else {}
+
+
+def _save_user_config(uid: str, updates: dict, activate: bool = True) -> str:
+    safe_uid = paths._safe_user_id(uid)
+    if not safe_uid:
+        raise ValueError("uid required")
+    root = _root_config()
+    users = root.setdefault("users", {})
+    current = users.setdefault(safe_uid, {})
+    users[safe_uid] = _merge_dict(current, updates)
+    if activate:
+        root["active_user_id"] = safe_uid
+    _save_root_config(root)
+    if activate:
+        paths.set_active_user_id(safe_uid)
+    return safe_uid
+
+
 def get_config():
-    config = load_json(CONFIG_PATH, {})
+    root = _root_config()
+    active_uid, user_cfg = _active_user_config(root)
+    if active_uid:
+        base = _merge_dict(root, {})
+        base.pop("netease", None)
+        base.pop("tts", None)
+        if isinstance(base.get("agent"), dict):
+            base["agent"].pop("llm", None)
+        config = _merge_dict(base, user_cfg)
+    else:
+        config = _merge_dict(root, user_cfg)
+    if active_uid:
+        config["active_user_id"] = active_uid
+        config.setdefault("netease", {})["uid"] = config.get("netease", {}).get("uid") or active_uid
     override_host = os.environ.get("MUSICDJ_NETEASE_API_HOST", "").strip()
     if override_host:
         config.setdefault("netease", {})["api_host"] = override_host
     override_port = os.environ.get("MUSICDJ_PORT", "").strip()
     if override_port.isdigit():
         config.setdefault("app", {})["port"] = int(override_port)
+    config.setdefault("app", {})["version"] = APP_VERSION
+    config["app"]["version"] = APP_VERSION
     return config
+
+
+def _is_placeholder_secret(value) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return True
+    lowered = text.lower()
+    placeholder_markers = (
+        "your-",
+        "placeholder",
+        "example",
+        "cookie",
+        "token",
+        "api key",
+        "api_key",
+        "你的",
+        "請",
+        "请",
+    )
+    return any(marker in lowered for marker in placeholder_markers)
+
+
+def _has_real_cookie(value) -> bool:
+    text = str(value or "").strip()
+    return bool(text and not _is_placeholder_secret(text) and "MUSIC_U=" in text)
+
+
+def _has_real_value(value) -> bool:
+    return not _is_placeholder_secret(value)
+
+
+def _netease_config_summary(config: dict) -> dict:
+    netease = config.get("netease", {})
+    cookie = netease.get("cookie", "")
+    uid = netease.get("uid", "")
+    enabled = bool(netease.get("enabled", False))
+    return {
+        "enabled": enabled,
+        "api_host": netease.get("api_host", "http://localhost:3000"),
+        "has_cookie": _has_real_cookie(cookie),
+        "has_uid": _has_real_value(uid),
+        "configured": enabled and _has_real_cookie(cookie),
+        "uid": str(uid) if _has_real_value(uid) else "",
+        "active_user_id": config.get("active_user_id", paths.active_user_id()),
+    }
+
+
+def _require_local_netease_account():
+    summary = _netease_config_summary(get_config())
+    if not summary["enabled"]:
+        return summary, jsonify({"error": "网易云功能未启用，请先在本机账号设置中开启"}), 400
+    if not summary["has_cookie"]:
+        return summary, jsonify({"error": "请先在本机账号设置中填写你自己的网易云 Cookie"}), 400
+    return summary, None, None
+
+
+def _public_config_summary(config: dict) -> dict:
+    agent_llm = config.get("agent", {}).get("llm", {})
+    tts = config.get("tts", {})
+    volcano = tts.get("volcano", tts)
+    weather = config.get("weather", {})
+    return {
+        "app": {
+            "name": config.get("app", {}).get("name", "Music DJ"),
+            "version": APP_VERSION,
+            "port": config.get("app", {}).get("port", 8765),
+            "active_user_id": config.get("active_user_id", paths.active_user_id()),
+        },
+        "netease": _netease_config_summary(config),
+        "llm": {
+            "configured": _has_real_value(agent_llm.get("api_key", "")),
+            "provider": agent_llm.get("provider", "deepseek"),
+            "base_url": agent_llm.get("base_url") or "https://api.deepseek.com",
+            "model": agent_llm.get("model") or "deepseek-chat",
+        },
+        "tts": {
+            "configured": tts.get("provider", "browser") == "browser" or (
+                _has_real_value(volcano.get("app_id", "")) and _has_real_value(volcano.get("token", ""))
+            ),
+            "provider": tts.get("provider", "browser"),
+            "voice_type": volcano.get("voice_type") or "BV700_V2_streaming",
+        },
+        "weather": {
+            "configured": _has_real_value(weather.get("api_key", "")),
+            "city": weather.get("city", ""),
+        },
+    }
+
+
+def _refresh_runtime_config(config: dict) -> None:
+    global dj_brain, tts_provider, scheduler
+    paths.ensure_runtime_layout()
+    refresh_path_globals()
+    if dj_brain:
+        dj_brain = DJBrain(config)
+    if tts_provider:
+        tts_provider = TTSProvider(config)
+    if scheduler:
+        scheduler = DJScheduler(dj_brain, config) if dj_brain else None
+
+
+def _start_user_import(uid: str) -> bool:
+    safe_uid = paths._safe_user_id(uid)
+    if not safe_uid:
+        return False
+    if IMPORT_STATUS.get("state") == "running":
+        return False
+
+    def run_import():
+        IMPORT_STATUS.update({
+            "state": "running",
+            "uid": safe_uid,
+            "started_at": datetime.now().isoformat(),
+            "finished_at": "",
+            "error": "",
+            "output_tail": "",
+        })
+        try:
+            collect_listening_data.BACKEND = f"http://127.0.0.1:{get_config().get('app', {}).get('port', 8765)}"
+            old_argv = sys.argv[:]
+            sys.argv = ["collect_listening_data.py"]
+            try:
+                collect_listening_data.main()
+            finally:
+                sys.argv = old_argv
+            IMPORT_STATUS["state"] = "done"
+            if paths.active_user_id() == safe_uid:
+                _refresh_runtime_config(get_config())
+        except Exception as e:
+            IMPORT_STATUS["state"] = "error"
+            IMPORT_STATUS["error"] = str(e)
+        finally:
+            IMPORT_STATUS["finished_at"] = datetime.now().isoformat()
+
+    threading.Thread(target=run_import, daemon=True).start()
+    return True
 
 
 # ── NCM Decryption ────────────────────────────────────
@@ -603,10 +832,11 @@ def api_status():
     config = get_config()
     status = {
         "running": True,
-        "version": config.get("app", {}).get("version", "0.1.0"),
-        "dj_name": config.get("dj", {}).get("name", "clauseekio"),
+        "version": APP_VERSION,
+        "dj_name": config.get("dj", {}).get("name", "MusicDJ"),
         "llm_available": dj_brain.llm.check_available() if dj_brain else False,
         "netease_available": check_netease_api(),
+        "netease_configured": _netease_config_summary(config)["configured"],
         "playlist_count": len(load_json(PLAYLIST_PATH, {}).get("songs", [])),
         "current_song": load_json(PLAYLIST_PATH, {}).get("current_index", -1),
     }
@@ -629,10 +859,198 @@ def api_status():
 @app.route("/api/config", methods=["GET", "POST"])
 def api_config():
     if request.method == "POST":
-        new_config = request.get_json()
+        if not os.environ.get("MUSICDJ_DEBUG"):
+            return jsonify({"error": "Full config writes are disabled. Use /api/local-account/netease."}), 403
+        new_config = request.get_json() or {}
         save_json(CONFIG_PATH, new_config)
+        _refresh_runtime_config(new_config)
         return jsonify({"ok": True})
-    return jsonify(get_config())
+    return jsonify(_public_config_summary(get_config()))
+
+
+@app.route("/api/local-account/netease", methods=["GET", "POST"])
+def api_local_netease_account():
+    config = get_config()
+    if request.method == "GET":
+        return jsonify(_netease_config_summary(config))
+
+    data = request.get_json() or {}
+    uid = str(data.get("uid") or config.get("netease", {}).get("uid") or "").strip()
+    if not uid:
+        return jsonify({"error": "uid required"}), 400
+
+    netease = {}
+    if "enabled" in data:
+        netease["enabled"] = bool(data.get("enabled"))
+    if "api_host" in data:
+        api_host = str(data.get("api_host") or "").strip()
+        netease["api_host"] = api_host or "http://localhost:3000"
+    if "cookie" in data:
+        netease["cookie"] = str(data.get("cookie") or "").strip()
+    if "uid" in data:
+        netease["uid"] = str(data.get("uid") or "").strip()
+
+    netease.setdefault("uid", uid)
+    safe_uid = _save_user_config(uid, {"netease": netease}, activate=True)
+    config = get_config()
+    _refresh_runtime_config(config)
+    if data.get("auto_import", True):
+        _start_user_import(safe_uid)
+    return jsonify({"ok": True, "netease": _netease_config_summary(config)})
+
+
+@app.route("/api/users", methods=["GET"])
+def api_users():
+    root = _root_config()
+    active_uid = paths.active_user_id()
+    configured = set((root.get("users", {}) or {}).keys())
+    disk = set()
+    users_root = paths.users_root_dir()
+    if users_root.exists():
+        disk = {p.name for p in users_root.iterdir() if p.is_dir()}
+    users = []
+    for uid in sorted(configured | disk):
+        data_path = paths.user_data_dir(uid)
+        stat_files = [p for p in data_path.rglob("*") if p.is_file()] if data_path.exists() else []
+        last_modified = max((p.stat().st_mtime for p in stat_files), default=None)
+        users.append({
+            "uid": uid,
+            "active": uid == active_uid,
+            "configured": uid in configured,
+            "has_data": data_path.exists(),
+            "file_count": len(stat_files),
+            "last_modified": datetime.fromtimestamp(last_modified).isoformat() if last_modified else "",
+        })
+    return jsonify({"active_user_id": active_uid, "users": users})
+
+
+@app.route("/api/users/<uid>/data", methods=["DELETE"])
+def api_delete_user_data(uid):
+    safe_uid = paths._safe_user_id(uid)
+    if not safe_uid:
+        return jsonify({"error": "uid required"}), 400
+    reset_current = str(request.args.get("reset_current", "")).lower() in {"1", "true", "yes"}
+    active_uid = paths.active_user_id()
+    if safe_uid == active_uid and not reset_current:
+        return jsonify({"error": "cannot delete current user without reset_current=true"}), 400
+
+    target = paths.user_data_dir(safe_uid).resolve()
+    users_root = paths.users_root_dir().resolve()
+    if users_root not in target.parents:
+        return jsonify({"error": "invalid user data path"}), 400
+    if target.exists():
+        gc.collect()
+        last_error = None
+        for _ in range(5):
+            try:
+                shutil.rmtree(target)
+                last_error = None
+                break
+            except PermissionError as e:
+                last_error = e
+                time.sleep(0.2)
+        if last_error:
+            return jsonify({"error": f"user data is currently in use: {last_error}"}), 409
+
+    root = _root_config()
+    users_cfg = root.get("users", {})
+    if isinstance(users_cfg, dict):
+        users_cfg.pop(safe_uid, None)
+    if safe_uid == active_uid and reset_current:
+        root["active_user_id"] = ""
+    _save_root_config(root)
+    if safe_uid == active_uid and reset_current:
+        paths.set_active_user_id("")
+
+    if safe_uid == active_uid and reset_current:
+        paths.ensure_runtime_layout()
+        refresh_path_globals()
+        _refresh_runtime_config(get_config())
+    return jsonify({"ok": True, "uid": safe_uid, "deleted": True})
+
+
+@app.route("/api/user/import/start", methods=["POST"])
+def api_user_import_start():
+    uid = paths.active_user_id()
+    if not uid:
+        return jsonify({"error": "active user required"}), 400
+    _, error_resp, status = _require_local_netease_account()
+    if error_resp:
+        return error_resp, status
+    started = _start_user_import(uid)
+    return jsonify({"ok": started, **IMPORT_STATUS})
+
+
+@app.route("/api/user/import/status")
+def api_user_import_status():
+    return jsonify(IMPORT_STATUS)
+
+
+@app.route("/api/local-account/llm", methods=["GET", "POST"])
+def api_local_llm():
+    config = get_config()
+    llm = config.get("agent", {}).get("llm", {})
+    if request.method == "GET":
+        return jsonify({
+            "presets": LLM_PRESETS,
+            "provider": llm.get("provider", "deepseek"),
+            "base_url": llm.get("base_url", "https://api.deepseek.com"),
+            "model": llm.get("model", "deepseek-chat"),
+            "temperature": llm.get("temperature", 1.05),
+            "max_tokens": llm.get("max_tokens", 500),
+            "configured": _has_real_value(llm.get("api_key", "")),
+        })
+
+    uid = paths.active_user_id()
+    if not uid:
+        return jsonify({"error": "active user required"}), 400
+    data = request.get_json() or {}
+    llm_update = {
+        "provider": str(data.get("provider") or "deepseek").strip(),
+        "base_url": str(data.get("base_url") or "").strip(),
+        "model": str(data.get("model") or "").strip(),
+        "temperature": float(data.get("temperature", 1.05)),
+        "max_tokens": int(data.get("max_tokens", 500)),
+    }
+    if "api_key" in data:
+        llm_update["api_key"] = str(data.get("api_key") or "").strip()
+    _save_user_config(uid, {"agent": {"llm": llm_update}}, activate=True)
+    config = get_config()
+    _refresh_runtime_config(config)
+    return jsonify({"ok": True, "llm": _public_config_summary(config)["llm"]})
+
+
+@app.route("/api/local-account/voice", methods=["GET", "POST"])
+def api_local_voice():
+    config = get_config()
+    tts = config.get("tts", {})
+    volcano = tts.get("volcano", tts)
+    if request.method == "GET":
+        return jsonify({
+            "providers": VOICE_PROVIDERS,
+            "provider": tts.get("provider", "browser"),
+            "volcano": {
+                "voice_type": volcano.get("voice_type", "BV700_V2_streaming"),
+                "resource_id": volcano.get("resource_id", "volc.tts.default"),
+                "encoding": volcano.get("encoding", "mp3"),
+                "app_id_configured": _has_real_value(volcano.get("app_id", "")),
+                "token_configured": _has_real_value(volcano.get("token", "")),
+            },
+        })
+
+    uid = paths.active_user_id()
+    if not uid:
+        return jsonify({"error": "active user required"}), 400
+    data = request.get_json() or {}
+    provider = str(data.get("provider") or "browser").strip()
+    volcano_update = {}
+    for key in ("app_id", "token", "voice_type", "resource_id", "encoding"):
+        if key in data:
+            volcano_update[key] = str(data.get(key) or "").strip()
+    _save_user_config(uid, {"tts": {"provider": provider, "volcano": volcano_update}}, activate=True)
+    config = get_config()
+    _refresh_runtime_config(config)
+    return jsonify({"ok": True, "tts": _public_config_summary(config)["tts"]})
 
 
 @app.route("/api/playlist")
@@ -809,6 +1227,9 @@ def api_audio():
 
     # Netease song: get streaming URL and redirect
     if source == "netease" and netease_id:
+        _, error_resp, status = _require_local_netease_account()
+        if error_resp:
+            return error_resp, status
         result = proxy_netease("/song/url", {"id": netease_id, "br": 320000})
         songs = result.get("data", [])
         url = None
@@ -939,6 +1360,9 @@ def serve_ncm_cache(filename):
 # ── Netease API Routes ───────────────────────────────
 @app.route("/api/netease/search", methods=["POST"])
 def api_netease_search():
+    _, error_resp, status = _require_local_netease_account()
+    if error_resp:
+        return error_resp, status
     data = request.get_json()
     keywords = data.get("keywords", "")
     limit = data.get("limit", 20)
@@ -951,6 +1375,9 @@ def api_netease_search():
 
 @app.route("/api/netease/song/url", methods=["POST"])
 def api_netease_song_url():
+    _, error_resp, status = _require_local_netease_account()
+    if error_resp:
+        return error_resp, status
     data = request.get_json()
     song_id = data.get("id", "")
     br = data.get("br", 320000)
@@ -962,6 +1389,9 @@ def api_netease_song_url():
 
 @app.route("/api/netease/song/detail", methods=["POST"])
 def api_netease_song_detail():
+    _, error_resp, status = _require_local_netease_account()
+    if error_resp:
+        return error_resp, status
     data = request.get_json()
     ids = data.get("ids", "")
     if not ids:
@@ -972,6 +1402,9 @@ def api_netease_song_detail():
 
 @app.route("/api/netease/song/lyric", methods=["POST"])
 def api_netease_song_lyric():
+    _, error_resp, status = _require_local_netease_account()
+    if error_resp:
+        return error_resp, status
     data = request.get_json()
     song_id = data.get("id", "")
     if not song_id:
@@ -983,6 +1416,9 @@ def api_netease_song_lyric():
 @app.route("/api/netease/likelist", methods=["POST"])
 def api_netease_likelist():
     """Get user's liked songs list. Requires cookie with uid."""
+    _, error_resp, status = _require_local_netease_account()
+    if error_resp:
+        return error_resp, status
     data = request.get_json()
     uid = data.get("uid", "")
     config = get_config()
@@ -997,6 +1433,9 @@ def api_netease_likelist():
 @app.route("/api/netease/user/playlist", methods=["POST"])
 def api_netease_user_playlist():
     """Get user's playlists. Requires cookie with uid."""
+    _, error_resp, status = _require_local_netease_account()
+    if error_resp:
+        return error_resp, status
     data = request.get_json()
     uid = data.get("uid", "")
     config = get_config()
@@ -1011,6 +1450,9 @@ def api_netease_user_playlist():
 @app.route("/api/netease/playlist/tracks", methods=["POST"])
 def api_netease_playlist_tracks():
     """Get tracks from a playlist by ID."""
+    _, error_resp, status = _require_local_netease_account()
+    if error_resp:
+        return error_resp, status
     data = request.get_json()
     playlist_id = data.get("id", "")
     limit = data.get("limit", 500)
@@ -1023,6 +1465,9 @@ def api_netease_playlist_tracks():
 @app.route("/api/netease/user/record", methods=["POST"])
 def api_netease_user_record():
     """Get user's listening history. type=0 (weekly), type=1 (all-time)."""
+    _, error_resp, status = _require_local_netease_account()
+    if error_resp:
+        return error_resp, status
     data = request.get_json()
     uid = data.get("uid", "")
     record_type = data.get("type", 0)
@@ -1037,6 +1482,9 @@ def api_netease_user_record():
 
 @app.route("/api/netease/listen/year/report", methods=["POST"])
 def api_netease_listen_year_report():
+    _, error_resp, status = _require_local_netease_account()
+    if error_resp:
+        return error_resp, status
     """听歌足迹 - 年度听歌报告。body: {year: 2025}"""
     data = request.get_json() or {}
     params = {}
@@ -1048,6 +1496,9 @@ def api_netease_listen_year_report():
 
 @app.route("/api/netease/listen/total", methods=["POST"])
 def api_netease_listen_total():
+    _, error_resp, status = _require_local_netease_account()
+    if error_resp:
+        return error_resp, status
     """听歌足迹 - 总收听时长。"""
     result = proxy_netease("/listen/data/total")
     return jsonify(result)
@@ -1055,6 +1506,9 @@ def api_netease_listen_total():
 
 @app.route("/api/netease/listen/report", methods=["POST"])
 def api_netease_listen_report():
+    _, error_resp, status = _require_local_netease_account()
+    if error_resp:
+        return error_resp, status
     """听歌足迹 - 周/月/年报告。body: {type: "week"|"month"|"year", endTime: "2025-05-07"}"""
     data = request.get_json() or {}
     params = {}
@@ -1068,6 +1522,9 @@ def api_netease_listen_report():
 
 @app.route("/api/netease/listen/recent", methods=["POST"])
 def api_netease_listen_recent():
+    _, error_resp, status = _require_local_netease_account()
+    if error_resp:
+        return error_resp, status
     """最近听歌列表。"""
     result = proxy_netease("/recent/listen/list")
     return jsonify(result)
@@ -1874,7 +2331,7 @@ if __name__ == "__main__":
     print(f"""
 ==========================================
          Music DJ Server Started
-  DJ: {config.get('dj', {}).get('name', 'clauseekio')}
+  DJ: {config.get('dj', {}).get('name', 'MusicDJ')}
   -> http://localhost:{port}
   LLM API: {'Connected' if llm_ok else 'Not available'}
   TTS:     {'火山引擎' if tts_ok else 'Not configured'}

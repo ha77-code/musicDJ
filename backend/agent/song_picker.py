@@ -13,11 +13,8 @@ Favor-familiar contexts raise familiar share to 35-45%.
 import json
 import random
 
-from .paths import data_dir, processed_history_dir
+from . import paths
 from .runtime_taste import RuntimeTasteScorer
-
-DATA_DIR = data_dir()
-PROCESSED_DIR = processed_history_dir()
 
 
 class CandidatePoolBuilder:
@@ -400,7 +397,7 @@ class CandidatePoolBuilder:
         if self._catalog_cache is not None:
             return self._catalog_cache
         try:
-            path = PROCESSED_DIR / "training_songs_top300.json"
+            path = paths.processed_history_dir() / "training_songs_top300.json"
             if path.exists():
                 with open(path, encoding="utf-8") as f:
                     data = json.load(f)

@@ -14,16 +14,26 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import requests
+import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-RAW_DIR = BASE_DIR / "data" / "listening_history" / "raw"
-PROCESSED_DIR = BASE_DIR / "data" / "listening_history" / "processed"
-BACKEND = "http://127.0.0.1:8765"
+sys.path.insert(0, str(BASE_DIR / "backend"))
+from agent import paths
+
+BACKEND = os.environ.get("MUSICDJ_BACKEND", "http://127.0.0.1:8765")
+
+
+def raw_dir():
+    return paths.raw_history_dir()
+
+
+def processed_dir():
+    return paths.processed_history_dir()
 
 
 def ensure_dirs():
-    RAW_DIR.mkdir(parents=True, exist_ok=True)
-    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    raw_dir().mkdir(parents=True, exist_ok=True)
+    processed_dir().mkdir(parents=True, exist_ok=True)
 
 
 def api(endpoint, body=None, timeout=15):
@@ -41,7 +51,7 @@ def api(endpoint, body=None, timeout=15):
 
 
 def save_json(name, data):
-    path = RAW_DIR / name
+    path = raw_dir() / name
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     size = len(json.dumps(data, ensure_ascii=False))
@@ -351,7 +361,7 @@ def merge_and_process(record_songs, playlist_songs, liked_songs, detail_map):
 # ── Save processed ───────────────────────────────────
 
 def save_processed(name, data):
-    path = PROCESSED_DIR / name
+    path = processed_dir() / name
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     print(f"  -> {name}")
@@ -506,8 +516,8 @@ def main():
     elapsed = time.time() - start
     print(f"\n{'='*50}")
     print(f"Done in {elapsed:.1f}s")
-    print(f"Raw:      {RAW_DIR}")
-    print(f"Training: {PROCESSED_DIR}")
+    print(f"Raw:      {raw_dir()}")
+    print(f"Training: {processed_dir()}")
 
 
 if __name__ == "__main__":
